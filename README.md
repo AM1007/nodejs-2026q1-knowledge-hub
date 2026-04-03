@@ -1,84 +1,85 @@
-# Knowledge Hub
+# Knowledge Hub API
+
+REST API for a Knowledge Hub platform built with Nest.js. Allows users to create, edit, and organize articles by categories and tags.
 
 ## Prerequisites
 
-- Git - [Download & Install Git](https://git-scm.com/downloads).
-- Node.js - [Download & Install Node.js](https://nodejs.org/en/download/) and the npm package manager.
+- Node.js 24.x.x (24.10.0 or higher)
+- npm
 
-## Downloading
+## Installation
 
-```
-git clone {repository URL}
-```
-
-## Installing NPM modules
-
-```
+```bash
+git clone https://github.com/AM1007/nodejs-2026q1-knowledge-hub.git
+cd nodejs-2026q1-knowledge-hub
 npm install
 ```
 
-## Running application
+## Configuration
 
-```
+Create a `.env` file in the project root:
+
+## Running the application
+
+```bash
 npm start
 ```
 
-After starting the app on port (4000 as default) you can open
-in your browser OpenAPI documentation by typing http://localhost:4000/doc/.
-For more information about OpenAPI/Swagger please visit https://swagger.io/.
+The application will start on `http://localhost:4000`.
+
+## API Documentation
+
+After starting the application, OpenAPI documentation is available at:
+
+## API Endpoints
+
+### Users (`/user`)
+
+- `GET /user` — get all users
+- `GET /user/:id` — get user by id
+- `POST /user` — create user (body: `login`, `password`, optional `role`)
+- `PUT /user/:id` — update password (body: `oldPassword`, `newPassword`)
+- `DELETE /user/:id` — delete user
+
+### Articles (`/article`)
+
+- `GET /article` — get all articles (optional filters: `status`, `categoryId`, `tag`)
+- `GET /article/:id` — get article by id
+- `POST /article` — create article (body: `title`, `content`, optional `status`, `authorId`, `categoryId`, `tags`)
+- `PUT /article/:id` — update article
+- `DELETE /article/:id` — delete article
+
+### Categories (`/category`)
+
+- `GET /category` — get all categories
+- `GET /category/:id` — get category by id
+- `POST /category` — create category (body: `name`, `description`)
+- `PUT /category/:id` — update category
+- `DELETE /category/:id` — delete category
+
+### Comments (`/comment`)
+
+- `GET /comment?articleId={articleId}` — get comments for an article
+- `GET /comment/:id` — get comment by id
+- `POST /comment` — create comment (body: `content`, `articleId`, optional `authorId`)
+- `DELETE /comment/:id` — delete comment
+
+## Cascading behavior
+
+- Deleting a User sets `authorId` to `null` in their articles and removes their comments
+- Deleting a Category sets `categoryId` to `null` in associated articles
+- Deleting an Article removes all associated comments
 
 ## Testing
 
-After application running open new terminal and enter:
+Run all tests (application must be running):
 
-To run all tests without authorization
-
-```
+```bash
 npm run test
 ```
 
-To run only one of all test suites
+## Linting
 
-```
-npm run test -- <path to suite>
-```
-
-To run all test with authorization
-
-```
-npm run test:auth
-```
-
-To run only specific test suite with authorization
-
-```
-npm run test:auth -- <path to suite>
-```
-
-To run refresh token tests
-
-```
-npm run test:refresh
-```
-
-To run RBAC (role-based access control) tests
-
-```
-npm run test:rbac
-```
-
-### Auto-fix and format
-
-```
+```bash
 npm run lint
 ```
-
-```
-npm run format
-```
-
-### Debugging in VSCode
-
-Press <kbd>F5</kbd> to debug.
-
-For more information, visit: https://code.visualstudio.com/docs/editor/debugging
