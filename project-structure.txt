@@ -1,0 +1,47 @@
+📄 .env.example
+📄 .eslintrc.js
+📄 .gitignore
+📄 .prettierrc
+📁 doc
+  📄 api.yaml
+📄 jest.config.json
+📄 nest-cli.json
+📄 package-lock.json
+📄 package.json
+📄 README.md
+📄 save-structure.cjs
+📁 src
+  📄 app.controller.ts
+  📄 app.module.ts
+  📄 app.service.ts
+  📄 main.ts
+📁 test
+  📄 articles.e2e.spec.ts
+  📁 auth
+    📄 articles.e2e.spec.ts
+    📄 categories.e2e.spec.ts
+    📄 comments.e2e.spec.ts
+    📄 users.e2e.spec.ts
+  📄 categories.e2e.spec.ts
+  📄 comments.e2e.spec.ts
+  📄 endpoints.ts
+  📁 lib
+    📄 index.ts
+    📄 request.ts
+  📁 rbac
+    📄 articles.e2e.spec.ts
+    📄 categories.e2e.spec.ts
+    📄 comments.e2e.spec.ts
+    📄 users.e2e.spec.ts
+  📁 refresh
+    📄 refresh.e2e.spec.ts
+  📄 users.e2e.spec.ts
+  📁 utils
+    📄 getTokenAndUserId.ts
+    📄 getUserTokenByRole.ts
+    📄 index.ts
+    📄 removeTokenUser.ts
+    📄 shouldAuthorizationBeTested.ts
+    📄 tokens.ts
+📄 tsconfig.build.json
+📄 tsconfig.json
