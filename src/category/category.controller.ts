@@ -6,19 +6,27 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto';
+import { applyPaginationAndSort } from '../common';
 
 @Controller('category')
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Get()
-  findAll() {
-    return this.categoryService.findAll();
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
+  ) {
+    const categories = this.categoryService.findAll();
+    return applyPaginationAndSort(categories, { page, limit, sortBy, order });
   }
 
   @Get(':id')

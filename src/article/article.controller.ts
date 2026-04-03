@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ArticleService } from './article.service';
 import { CreateArticleDto, UpdateArticleDto } from './dto';
+import { applyPaginationAndSort } from '../common';
 
 @Controller('article')
 export class ArticleController {
@@ -22,8 +23,13 @@ export class ArticleController {
     @Query('status') status?: string,
     @Query('categoryId') categoryId?: string,
     @Query('tag') tag?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
   ) {
-    return this.articleService.findAll({ status, categoryId, tag });
+    const articles = this.articleService.findAll({ status, categoryId, tag });
+    return applyPaginationAndSort(articles, { page, limit, sortBy, order });
   }
 
   @Get(':id')

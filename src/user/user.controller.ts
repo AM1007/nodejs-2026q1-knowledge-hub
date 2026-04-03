@@ -6,20 +6,27 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto, UpdatePasswordDto } from './dto';
+import { applyPaginationAndSort } from '../common';
 
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get()
-  findAll() {
-    const users = this.userService.findAll();
-    return users.map(this.excludePassword);
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: string,
+  ) {
+    const users = this.userService.findAll().map(this.excludePassword);
+    return applyPaginationAndSort(users, { page, limit, sortBy, order });
   }
 
   @Get(':id')
@@ -52,7 +59,8 @@ export class UserController {
   }
 
   private excludePassword(user: any) {
-    const { password, ...result } = user;
+    const result = { ...user };
+    delete result.password;
     return result;
   }
 }
