@@ -13,12 +13,20 @@ import {
 import { ArticleService } from './article.service';
 import { CreateArticleDto, UpdateArticleDto } from './dto';
 import { applyPaginationAndSort } from '../common';
+import { ApiQuery } from '@nestjs/swagger';
 
 @Controller('article')
 export class ArticleController {
   constructor(private readonly articleService: ArticleService) {}
 
   @Get()
+  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'categoryId', required: false })
+  @ApiQuery({ name: 'tag', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false })
   findAll(
     @Query('status') status?: string,
     @Query('categoryId') categoryId?: string,

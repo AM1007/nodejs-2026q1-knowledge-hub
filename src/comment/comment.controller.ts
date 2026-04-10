@@ -12,12 +12,18 @@ import {
 import { CommentService } from './comment.service';
 import { CreateCommentDto } from './dto';
 import { applyPaginationAndSort } from '../common';
+import { ApiQuery } from '@nestjs/swagger';
 
 @Controller('comment')
 export class CommentController {
   constructor(private readonly commentService: CommentService) {}
 
   @Get()
+  @ApiQuery({ name: 'articleId', required: true })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false })
   findByArticle(
     @Query('articleId') articleId: string,
     @Query('page') page?: string,
