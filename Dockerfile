@@ -1,0 +1,39 @@
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm ci
+
+COPY prisma ./prisma
+
+RUN npx prisma generate
+
+COPY . .
+
+RUN npm run build
+
+FROM node:24-alpine AS production
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package*.json ./
+
+RUN npm ci --omit=dev
+
+COPY prisma ./prisma
+
+RUN npx prisma generate
+
+COPY --from=build /app/dist ./dist
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+USER appuser
+
+EXPOSE 4000
+
+CMD ["node", "dist/main"]
