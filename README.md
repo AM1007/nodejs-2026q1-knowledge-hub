@@ -83,3 +83,7 @@ npm run test
 ```bash
 npm run lint
 ```
+
+## Docker Hub
+
+Docker image: https://hub.docker.com/r/am1007/knowledge-hub
