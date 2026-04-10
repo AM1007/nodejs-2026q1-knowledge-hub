@@ -27,7 +27,7 @@ export class ArticleController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false })
-  findAll(
+  async findAll(
     @Query('status') status?: string,
     @Query('categoryId') categoryId?: string,
     @Query('tag') tag?: string,
@@ -36,29 +36,33 @@ export class ArticleController {
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
   ) {
-    const articles = this.articleService.findAll({ status, categoryId, tag });
+    const articles = await this.articleService.findAll({
+      status,
+      categoryId,
+      tag,
+    });
     return applyPaginationAndSort(articles, { page, limit, sortBy, order });
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string) {
     return this.articleService.findOne(id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateArticleDto) {
+  async create(@Body() dto: CreateArticleDto) {
     return this.articleService.create(dto);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
+  async update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
     return this.articleService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
-    this.articleService.delete(id);
+  async delete(@Param('id') id: string) {
+    await this.articleService.delete(id);
   }
 }

@@ -2,119 +2,146 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { validate as isUUID } from 'uuid';
-import { Article, ArticleStatus } from '../common';
-import { CommentService } from '../comment/comment.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { ArticleStatus } from '@prisma/client';
 
 @Injectable()
 export class ArticleService {
-  private articles: Article[] = [];
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(
-    @Inject(forwardRef(() => CommentService))
-    private readonly commentService: CommentService,
-  ) {}
-
-  findAll(filters?: {
+  async findAll(filters?: {
     status?: string;
     categoryId?: string;
     tag?: string;
-  }): Article[] {
-    let result = this.articles;
+  }) {
+    const where: any = {};
 
     if (filters?.status) {
-      result = result.filter((a) => a.status === filters.status);
+      where.status = filters.status.toUpperCase();
     }
     if (filters?.categoryId) {
-      result = result.filter((a) => a.categoryId === filters.categoryId);
+      where.categoryId = filters.categoryId;
     }
     if (filters?.tag) {
-      result = result.filter((a) => a.tags.includes(filters.tag));
+      where.tags = { some: { name: filters.tag } };
     }
 
-    return result;
+    const articles = await this.prisma.article.findMany({
+      where,
+      include: { tags: true },
+    });
+
+    return articles.map(this.toResponse);
   }
 
-  findOne(id: string): Article {
+  async findOne(id: string) {
     if (!isUUID(id)) {
       throw new BadRequestException('Invalid articleId: not a valid UUID');
     }
-    const article = this.articles.find((a) => a.id === id);
+    const article = await this.prisma.article.findUnique({
+      where: { id },
+      include: { tags: true },
+    });
     if (!article) {
       throw new NotFoundException('Article not found');
     }
-    return article;
+    return this.toResponse(article);
   }
 
-  create(dto: {
+  async create(dto: {
     title: string;
     content: string;
-    status?: ArticleStatus;
+    status?: string;
     authorId?: string | null;
     categoryId?: string | null;
     tags?: string[];
-  }): Article {
-    const now = Date.now();
-    const article: Article = {
-      id: randomUUID(),
-      title: dto.title,
-      content: dto.content,
-      status: dto.status ?? ArticleStatus.DRAFT,
-      authorId: dto.authorId ?? null,
-      categoryId: dto.categoryId ?? null,
-      tags: dto.tags ?? [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.articles.push(article);
-    return article;
+  }) {
+    const article = await this.prisma.article.create({
+      data: {
+        title: dto.title,
+        content: dto.content,
+        status: dto.status
+          ? (dto.status.toUpperCase() as ArticleStatus)
+          : ArticleStatus.DRAFT,
+        authorId: dto.authorId ?? null,
+        categoryId: dto.categoryId ?? null,
+        tags: dto.tags?.length
+          ? {
+              connectOrCreate: dto.tags.map((name) => ({
+                where: { name },
+                create: { name },
+              })),
+            }
+          : undefined,
+      },
+      include: { tags: true },
+    });
+
+    return this.toResponse(article);
   }
 
-  update(
+  async update(
     id: string,
     dto: {
       title?: string;
       content?: string;
-      status?: ArticleStatus;
+      status?: string;
       categoryId?: string | null;
       tags?: string[];
     },
-  ): Article {
-    const article = this.findOne(id);
+  ) {
+    const existing = await this.findOne(id);
 
-    if (dto.title !== undefined) article.title = dto.title;
-    if (dto.content !== undefined) article.content = dto.content;
-    if (dto.status !== undefined) article.status = dto.status;
-    if (dto.categoryId !== undefined) article.categoryId = dto.categoryId;
-    if (dto.tags !== undefined) article.tags = dto.tags;
+    const data: any = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.content !== undefined) data.content = dto.content;
+    if (dto.status !== undefined)
+      data.status = dto.status.toUpperCase() as ArticleStatus;
+    if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
+    if (dto.tags !== undefined) {
+      data.tags = {
+        set: [],
+        connectOrCreate: dto.tags.map((name) => ({
+          where: { name },
+          create: { name },
+        })),
+      };
+    }
 
-    article.updatedAt = Date.now();
-    return article;
+    const article = await this.prisma.article.update({
+      where: { id },
+      data,
+      include: { tags: true },
+    });
+
+    return this.toResponse(article);
   }
 
-  delete(id: string): void {
-    const article = this.findOne(id);
-    this.commentService.deleteByArticleId(article.id);
-    this.articles = this.articles.filter((a) => a.id !== article.id);
+  async delete(id: string) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid articleId: not a valid UUID');
+    }
+    const article = await this.prisma.article.findUnique({ where: { id } });
+    if (!article) {
+      throw new NotFoundException('Article not found');
+    }
+
+    await this.prisma.article.delete({ where: { id } });
   }
 
-  nullifyAuthor(userId: string): void {
-    this.articles
-      .filter((a) => a.authorId === userId)
-      .forEach((a) => (a.authorId = null));
-  }
-
-  nullifyCategory(categoryId: string): void {
-    this.articles
-      .filter((a) => a.categoryId === categoryId)
-      .forEach((a) => (a.categoryId = null));
-  }
-
-  findByArticleId(articleId: string): Article | null {
-    return this.articles.find((a) => a.id === articleId) ?? null;
+  private toResponse(article: any) {
+    return {
+      id: article.id,
+      title: article.title,
+      content: article.content,
+      status: article.status.toLowerCase(),
+      authorId: article.authorId,
+      categoryId: article.categoryId,
+      tags: article.tags ? article.tags.map((t: any) => t.name) : [],
+      createdAt: article.createdAt.getTime(),
+      updatedAt: article.updatedAt.getTime(),
+    };
   }
 }

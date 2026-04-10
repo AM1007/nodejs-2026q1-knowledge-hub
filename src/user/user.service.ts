@@ -3,69 +3,87 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { validate as isUUID } from 'uuid';
-import { User, UserRole } from '../common';
-import { ArticleService } from '../article/article.service';
-import { CommentService } from '../comment/comment.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class UserService {
-  private users: User[] = [];
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(
-    @Inject(forwardRef(() => ArticleService))
-    private readonly articleService: ArticleService,
-    @Inject(forwardRef(() => CommentService))
-    private readonly commentService: CommentService,
-  ) {}
-
-  findAll(): User[] {
-    return this.users;
+  async findAll() {
+    const users = await this.prisma.user.findMany();
+    return users.map(this.toResponse);
   }
 
-  findOne(id: string): User {
+  async findOne(id: string) {
     if (!isUUID(id)) {
       throw new BadRequestException('Invalid userId: not a valid UUID');
     }
-    const user = this.users.find((u) => u.id === id);
+    const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return user;
+    return this.toResponse(user);
   }
 
-  create(login: string, password: string, role?: UserRole): User {
-    const now = Date.now();
-    const user: User = {
-      id: randomUUID(),
-      login,
-      password,
-      role: role ?? UserRole.VIEWER,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.users.push(user);
-    return user;
+  async create(login: string, password: string, role?: UserRole) {
+    const user = await this.prisma.user.create({
+      data: {
+        login,
+        password,
+        role: role ?? UserRole.VIEWER,
+      },
+    });
+    return this.toResponse(user);
   }
 
-  updatePassword(id: string, oldPassword: string, newPassword: string): User {
-    const user = this.findOne(id);
+  async updatePassword(id: string, oldPassword: string, newPassword: string) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid userId: not a valid UUID');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
     if (user.password !== oldPassword) {
       throw new ForbiddenException('Old password is wrong');
     }
-    user.password = newPassword;
-    user.updatedAt = Date.now();
-    return user;
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { password: newPassword },
+    });
+    return this.toResponse(updated);
   }
 
-  delete(id: string): void {
-    const user = this.findOne(id);
-    this.articleService.nullifyAuthor(user.id);
-    this.commentService.deleteByAuthorId(user.id);
-    this.users = this.users.filter((u) => u.id !== user.id);
+  async delete(id: string) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid userId: not a valid UUID');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.comment.deleteMany({ where: { authorId: id } }),
+      this.prisma.article.updateMany({
+        where: { authorId: id },
+        data: { authorId: null },
+      }),
+      this.prisma.user.delete({ where: { id } }),
+    ]);
+  }
+
+  private toResponse(user: any) {
+    return {
+      id: user.id,
+      login: user.login,
+      password: user.password,
+      role: user.role.toLowerCase(),
+      createdAt: user.createdAt.getTime(),
+      updatedAt: user.updatedAt.getTime(),
+    };
   }
 }

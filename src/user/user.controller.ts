@@ -14,6 +14,7 @@ import { UserService } from './user.service';
 import { CreateUserDto, UpdatePasswordDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 
 @Controller('user')
 export class UserController {
@@ -24,32 +25,39 @@ export class UserController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false })
-  findAll(
+  async findAll(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
   ) {
-    const users = this.userService.findAll().map(this.excludePassword);
+    const users = (await this.userService.findAll()).map(this.excludePassword);
     return applyPaginationAndSort(users, { page, limit, sortBy, order });
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    const user = this.userService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    const user = await this.userService.findOne(id);
     return this.excludePassword(user);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateUserDto) {
-    const user = this.userService.create(dto.login, dto.password, dto.role);
+  async create(@Body() dto: CreateUserDto) {
+    const user = await this.userService.create(
+      dto.login,
+      dto.password,
+      dto.role as unknown as UserRole,
+    );
     return this.excludePassword(user);
   }
 
   @Put(':id')
-  updatePassword(@Param('id') id: string, @Body() dto: UpdatePasswordDto) {
-    const user = this.userService.updatePassword(
+  async updatePassword(
+    @Param('id') id: string,
+    @Body() dto: UpdatePasswordDto,
+  ) {
+    const user = await this.userService.updatePassword(
       id,
       dto.oldPassword,
       dto.newPassword,
@@ -59,8 +67,8 @@ export class UserController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
-    this.userService.delete(id);
+  async delete(@Param('id') id: string) {
+    await this.userService.delete(id);
   }
 
   private excludePassword(user: any) {

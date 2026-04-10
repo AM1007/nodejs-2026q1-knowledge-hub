@@ -24,35 +24,35 @@ export class CategoryController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false })
-  findAll(
+  async findAll(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
   ) {
-    const categories = this.categoryService.findAll();
+    const categories = await this.categoryService.findAll();
     return applyPaginationAndSort(categories, { page, limit, sortBy, order });
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string) {
     return this.categoryService.findOne(id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateCategoryDto) {
+  async create(@Body() dto: CreateCategoryDto) {
     return this.categoryService.create(dto.name, dto.description);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
+  async update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
     return this.categoryService.update(id, dto.name, dto.description);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
-    this.categoryService.delete(id);
+  async delete(@Param('id') id: string) {
+    await this.categoryService.delete(id);
   }
 }

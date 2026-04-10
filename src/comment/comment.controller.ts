@@ -24,31 +24,31 @@ export class CommentController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false })
-  findByArticle(
+  async findByArticle(
     @Query('articleId') articleId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
   ) {
-    const comments = this.commentService.findByArticleId(articleId);
+    const comments = await this.commentService.findByArticleId(articleId);
     return applyPaginationAndSort(comments, { page, limit, sortBy, order });
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string) {
     return this.commentService.findOne(id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateCommentDto) {
+  async create(@Body() dto: CreateCommentDto) {
     return this.commentService.create(dto.content, dto.articleId, dto.authorId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
-    this.commentService.delete(id);
+  async delete(@Param('id') id: string) {
+    await this.commentService.delete(id);
   }
 }
