@@ -1,11 +1,12 @@
 # Knowledge Hub API
 
-REST API for a Knowledge Hub platform built with Nest.js. Allows users to create, edit, and organize articles by categories and tags.
+REST API for a Knowledge Hub platform built with NestJS, PostgreSQL, and Prisma ORM. Containerized with Docker.
 
 ## Prerequisites
 
 - Node.js 24.x.x (24.10.0 or higher)
 - npm
+- Docker & Docker Compose
 
 ## Installation
 
@@ -17,19 +18,103 @@ npm install
 
 ## Configuration
 
-Create a `.env` file in the project root:
-
-## Running the application
+Copy `.env.example` to `.env` and fill in the values:
 
 ```bash
-npm start
+cp .env.example .env
 ```
 
-The application will start on `http://localhost:4000`.
+Environment variables:
 
-## API Documentation
+| Variable                    | Description              | Default         |
+| --------------------------- | ------------------------ | --------------- |
+| `PORT`                      | Application port         | `4000`          |
+| `CRYPT_SALT`                | Bcrypt salt rounds       | `10`            |
+| `JWT_SECRET_KEY`            | JWT access token secret  | —               |
+| `JWT_SECRET_REFRESH_KEY`    | JWT refresh token secret | —               |
+| `TOKEN_EXPIRE_TIME`         | Access token TTL         | `1h`            |
+| `TOKEN_REFRESH_EXPIRE_TIME` | Refresh token TTL        | `24h`           |
+| `POSTGRES_USER`             | PostgreSQL username      | `postgres`      |
+| `POSTGRES_PASSWORD`         | PostgreSQL password      | `postgres`      |
+| `POSTGRES_DB`               | PostgreSQL database name | `knowledge_hub` |
+| `POSTGRES_HOST`             | PostgreSQL host          | `db`            |
+| `POSTGRES_PORT`             | PostgreSQL port          | `5432`          |
+| `DATABASE_URL`              | Prisma connection string | —               |
 
-After starting the application, OpenAPI documentation is available at:
+## Running with Docker
+
+Start all services (app + PostgreSQL):
+
+```bash
+docker-compose up --build
+```
+
+Start with Adminer (DB management UI on `http://localhost:8080`):
+
+```bash
+docker-compose --profile debug up --build
+```
+
+Stop all services:
+
+```bash
+docker-compose down
+```
+
+## Running locally (development)
+
+Start only the database container:
+
+```bash
+docker-compose up db -d
+```
+
+Update `DATABASE_URL` in `.env` to use `localhost`:
+
+```
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/knowledge_hub?schema=public&connection_limit=10"
+```
+
+Run migrations and seed:
+
+```bash
+npx prisma migrate dev
+npx prisma db seed
+```
+
+Start the application:
+
+```bash
+npm run start:dev
+```
+
+The application will be available at `http://localhost:4000`.
+
+## Database
+
+### Prisma commands
+
+| Command                    | Description                 |
+| -------------------------- | --------------------------- |
+| `npx prisma migrate dev`   | Create and apply migrations |
+| `npx prisma migrate reset` | Reset DB and re-run seed    |
+| `npx prisma db seed`       | Run seed script             |
+| `npx prisma studio`        | Open visual DB editor       |
+| `npx prisma generate`      | Regenerate Prisma Client    |
+
+### Data model
+
+- **User** — id, login, password, role (ADMIN, EDITOR, VIEWER)
+- **Article** — id, title, content, status (DRAFT, PUBLISHED, ARCHIVED), authorId, categoryId
+- **Category** — id, name, description
+- **Comment** — id, content, articleId, authorId
+- **Tag** — id, name (unique), many-to-many with Article
+
+### Cascading behavior
+
+- Deleting a User sets `authorId` to `null` in their articles and removes their comments
+- Deleting a Category sets `categoryId` to `null` in associated articles
+- Deleting an Article removes all associated comments and tag relations
 
 ## API Endpoints
 
@@ -64,11 +149,9 @@ After starting the application, OpenAPI documentation is available at:
 - `POST /comment` — create comment (body: `content`, `articleId`, optional `authorId`)
 - `DELETE /comment/:id` — delete comment
 
-## Cascading behavior
+### API Documentation
 
-- Deleting a User sets `authorId` to `null` in their articles and removes their comments
-- Deleting a Category sets `categoryId` to `null` in associated articles
-- Deleting an Article removes all associated comments
+After starting the application, OpenAPI (Swagger) documentation is available at: `http://localhost:4000/doc`
 
 ## Testing
 
@@ -78,12 +161,12 @@ Run all tests (application must be running):
 npm run test
 ```
 
-## Linting
+## Security Scan
 
-```bash
-npm run lint
-```
+Tool: Docker Scout
+Image: am1007/knowledge-hub:latest
+Results: No critical or high vulnerabilities detected.
 
 ## Docker Hub
 
-Docker image: https://hub.docker.com/r/am1007/knowledge-hub
+Docker image: [am1007/knowledge-hub](https://hub.docker.com/r/am1007/knowledge-hub)
