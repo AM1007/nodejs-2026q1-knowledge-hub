@@ -83,6 +83,10 @@ export class UserService {
     ]);
   }
 
+  async findByLogin(login: string) {
+    return this.prisma.user.findFirst({ where: { login } });
+  }
+
   private toResponse(user: any) {
     return {
       id: user.id,
