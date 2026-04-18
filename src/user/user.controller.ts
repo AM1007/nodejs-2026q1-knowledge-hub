@@ -31,25 +31,23 @@ export class UserController {
     @Query('sortBy') sortBy?: string,
     @Query('order') order?: string,
   ) {
-    const users = (await this.userService.findAll()).map(this.excludePassword);
+    const users = await this.userService.findAll();
     return applyPaginationAndSort(users, { page, limit, sortBy, order });
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string) {
-    const user = await this.userService.findOne(id);
-    return this.excludePassword(user);
+    return this.userService.findOne(id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateUserDto) {
-    const user = await this.userService.create(
+    return this.userService.create(
       dto.login,
       dto.password,
       dto.role as unknown as UserRole,
     );
-    return this.excludePassword(user);
   }
 
   @Put(':id')
