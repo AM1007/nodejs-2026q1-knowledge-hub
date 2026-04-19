@@ -1,11 +1,18 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum } from 'class-validator';
+import { UserRole } from '../../common';
 
 export class UpdatePasswordDto {
   @IsString()
   @IsNotEmpty()
-  oldPassword: string;
+  @IsOptional()
+  oldPassword?: string;
 
   @IsString()
   @IsNotEmpty()
-  newPassword: string;
+  @IsOptional()
+  newPassword?: string;
+
+  @IsEnum(UserRole)
+  @IsOptional()
+  role?: UserRole;
 }

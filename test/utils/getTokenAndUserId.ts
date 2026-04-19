@@ -1,4 +1,4 @@
-import { authRoutes } from '../endpoints';
+import { authRoutes, usersRoutes } from '../endpoints';
 
 const createUserDto = {
   login: 'TEST_AUTH_LOGIN',
@@ -6,15 +6,50 @@ const createUserDto = {
 };
 
 const getTokenAndUserId = async (request) => {
-  // create user
-  const {
-    body: { id: mockUserId },
-  } = await request
+  const signupResponse = await request
     .post(authRoutes.signup)
     .set('Accept', 'application/json')
     .send(createUserDto);
 
-  // get token
+  let mockUserId = signupResponse.body?.id;
+
+  const {
+    body: { accessToken: seedAdminToken },
+  } = await request
+    .post(authRoutes.login)
+    .set('Accept', 'application/json')
+    .send({ login: 'admin', password: 'admin123' });
+
+  if (!seedAdminToken) {
+    throw new Error('Authorization is not implemented');
+  }
+
+  const seedAdminHeaders = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${seedAdminToken}`,
+  };
+
+  if (!mockUserId) {
+    const allUsers = await request
+      .get(usersRoutes.getAll)
+      .set(seedAdminHeaders);
+
+    const existing = allUsers.body.find?.(
+      (u: any) => u.login === createUserDto.login,
+    );
+
+    if (!existing) {
+      throw new Error('Authorization is not implemented');
+    }
+
+    mockUserId = existing.id;
+  }
+
+  await request
+    .put(usersRoutes.update(mockUserId))
+    .set(seedAdminHeaders)
+    .send({ role: 'admin' });
+
   const {
     body: { accessToken, refreshToken },
   } = await request
@@ -22,7 +57,7 @@ const getTokenAndUserId = async (request) => {
     .set('Accept', 'application/json')
     .send(createUserDto);
 
-  if (mockUserId === undefined || accessToken === undefined) {
+  if (!accessToken) {
     throw new Error('Authorization is not implemented');
   }
 

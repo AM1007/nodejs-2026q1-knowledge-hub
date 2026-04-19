@@ -7,13 +7,16 @@ import {
   Param,
   Body,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ArticleService } from './article.service';
 import { CreateArticleDto, UpdateArticleDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators';
 
 @Controller('article')
 export class ArticleController {
@@ -50,17 +53,33 @@ export class ArticleController {
   }
 
   @Post()
+  @Roles('admin', 'editor')
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateArticleDto) {
     return this.articleService.create(dto);
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
+  @Roles('admin', 'editor')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateArticleDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+
+    if (user.role === 'editor') {
+      const article = await this.articleService.findOne(id);
+      if (article.authorId !== user.userId) {
+        throw new ForbiddenException("Cannot update other user's article");
+      }
+    }
+
     return this.articleService.update(id, dto);
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.articleService.delete(id);
