@@ -7,14 +7,18 @@ import {
   Param,
   Body,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto, UpdatePasswordDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { Roles } from '../auth/decorators';
 
 @Controller('user')
 export class UserController {
@@ -41,6 +45,7 @@ export class UserController {
   }
 
   @Post()
+  @Roles('admin')
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateUserDto) {
     return this.userService.create(
@@ -51,27 +56,36 @@ export class UserController {
   }
 
   @Put(':id')
-  async updatePassword(
+  @Roles('admin', 'editor', 'viewer')
+  async update(
     @Param('id') id: string,
     @Body() dto: UpdatePasswordDto,
+    @Req() req: any,
   ) {
-    const user = await this.userService.updatePassword(
-      id,
-      dto.oldPassword,
-      dto.newPassword,
-    );
-    return this.excludePassword(user);
+    const currentUser = req.user;
+
+    if (dto.role !== undefined) {
+      if (currentUser.role !== 'admin') {
+        throw new ForbiddenException('Only admin can change roles');
+      }
+      return this.userService.updateRole(id, dto.role);
+    }
+
+    if (dto.oldPassword !== undefined && dto.newPassword !== undefined) {
+      return this.userService.updatePassword(
+        id,
+        dto.oldPassword,
+        dto.newPassword,
+      );
+    }
+
+    throw new BadRequestException('Invalid update payload');
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.userService.delete(id);
-  }
-
-  private excludePassword(user: any) {
-    const result = { ...user };
-    delete result.password;
-    return result;
   }
 }

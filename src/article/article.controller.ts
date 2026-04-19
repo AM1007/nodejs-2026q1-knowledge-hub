@@ -14,6 +14,7 @@ import { ArticleService } from './article.service';
 import { CreateArticleDto, UpdateArticleDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators';
 
 @Controller('article')
 export class ArticleController {
@@ -50,17 +51,20 @@ export class ArticleController {
   }
 
   @Post()
+  @Roles('admin', 'editor')
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateArticleDto) {
     return this.articleService.create(dto);
   }
 
   @Put(':id')
+  @Roles('admin', 'editor')
   async update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
     return this.articleService.update(id, dto);
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.articleService.delete(id);

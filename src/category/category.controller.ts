@@ -14,6 +14,7 @@ import { CategoryService } from './category.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators';
 
 @Controller('category')
 export class CategoryController {
@@ -40,17 +41,20 @@ export class CategoryController {
   }
 
   @Post()
+  @Roles('admin')
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateCategoryDto) {
     return this.categoryService.create(dto.name, dto.description);
   }
 
   @Put(':id')
+  @Roles('admin')
   async update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
     return this.categoryService.update(id, dto.name, dto.description);
   }
 
   @Delete(':id')
+  @Roles('admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     await this.categoryService.delete(id);

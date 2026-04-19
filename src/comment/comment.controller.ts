@@ -6,13 +6,16 @@ import {
   Param,
   Body,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CommentService } from './comment.service';
 import { CreateCommentDto } from './dto';
 import { applyPaginationAndSort } from '../common';
 import { ApiQuery } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators';
 
 @Controller('comment')
 export class CommentController {
@@ -41,14 +44,25 @@ export class CommentController {
   }
 
   @Post()
+  @Roles('admin', 'editor')
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateCommentDto) {
     return this.commentService.create(dto.content, dto.articleId, dto.authorId);
   }
 
   @Delete(':id')
+  @Roles('admin', 'editor')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
+  async delete(@Param('id') id: string, @Req() req: any) {
+    const user = req.user;
+
+    if (user.role === 'editor') {
+      const comment = await this.commentService.findOne(id);
+      if (comment.authorId !== user.userId) {
+        throw new ForbiddenException("Cannot delete other user's comment");
+      }
+    }
+
     await this.commentService.delete(id);
   }
 }

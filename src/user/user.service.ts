@@ -64,6 +64,22 @@ export class UserService {
     return this.toResponse(updated);
   }
 
+  async updateRole(id: string, role: string) {
+    if (!isUUID(id)) {
+      throw new BadRequestException('Invalid userId: not a valid UUID');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { role: role.toUpperCase() as UserRole },
+    });
+    return this.toResponse(updated);
+  }
+
   async delete(id: string) {
     if (!isUUID(id)) {
       throw new BadRequestException('Invalid userId: not a valid UUID');
