@@ -7,8 +7,10 @@ import {
   Param,
   Body,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ArticleService } from './article.service';
 import { CreateArticleDto, UpdateArticleDto } from './dto';
@@ -59,7 +61,20 @@ export class ArticleController {
 
   @Put(':id')
   @Roles('admin', 'editor')
-  async update(@Param('id') id: string, @Body() dto: UpdateArticleDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateArticleDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+
+    if (user.role === 'editor') {
+      const article = await this.articleService.findOne(id);
+      if (article.authorId !== user.userId) {
+        throw new ForbiddenException("Cannot update other user's article");
+      }
+    }
+
     return this.articleService.update(id, dto);
   }
 
