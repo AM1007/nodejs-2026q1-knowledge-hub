@@ -16,6 +16,7 @@ interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly tokenBlacklist = new Set<string>();
   constructor(
     private readonly userService: UserService,
     private readonly jwt: JwtService,
@@ -48,6 +49,10 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
+    if (this.tokenBlacklist.has(refreshToken)) {
+      throw new ForbiddenException('Token has been revoked');
+    }
+
     let payload: JwtPayload;
 
     try {
@@ -74,5 +79,9 @@ export class AuthService {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  async logout(refreshToken: string) {
+    this.tokenBlacklist.add(refreshToken);
   }
 }
