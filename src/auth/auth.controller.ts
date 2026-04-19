@@ -1,6 +1,13 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { SignupDto, LoginDto } from './dto';
+import { SignupDto, LoginDto, RefreshDto } from './dto';
 import { Public } from './decorators';
 
 @Public()
@@ -18,5 +25,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshDto) {
+    if (!dto?.refreshToken || typeof dto.refreshToken !== 'string') {
+      throw new UnauthorizedException('No refresh token provided');
+    }
+    return this.authService.refresh(dto.refreshToken);
   }
 }

@@ -6,7 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
-import { SignupDto, LoginDto } from './dto';
+import { SignupDto, LoginDto, RefreshDto } from './dto';
 
 interface JwtPayload {
   userId: string;
@@ -44,6 +44,24 @@ export class AuthService {
       userId: user.id,
       login: user.login,
       role: user.role.toLowerCase(),
+    });
+  }
+
+  async refresh(refreshToken: string) {
+    let payload: JwtPayload;
+
+    try {
+      payload = await this.jwt.verifyAsync<JwtPayload>(refreshToken, {
+        secret: process.env.JWT_SECRET_REFRESH_KEY,
+      });
+    } catch {
+      throw new ForbiddenException('Invalid or expired refresh token');
+    }
+
+    return this.generateTokens({
+      userId: payload.userId,
+      login: payload.login,
+      role: payload.role,
     });
   }
 
