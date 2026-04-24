@@ -168,4 +168,37 @@ describe('UserService', () => {
       expect(prismaMock.$transaction).toHaveBeenCalled();
     });
   });
+
+  describe('updateRole', () => {
+    const userId = '550e8400-e29b-41d4-a716-446655440000';
+
+    it('should throw ValidationError for invalid UUID', async () => {
+      await expect(service.updateRole('bad-id', 'admin')).rejects.toThrow(
+        ValidationError,
+      );
+    });
+
+    it('should throw NotFoundError when user not found', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+      await expect(service.updateRole(userId, 'admin')).rejects.toThrow(
+        NotFoundError,
+      );
+    });
+
+    it('should update role', async () => {
+      const mockUser = {
+        id: userId,
+        login: 'test',
+        password: 'h',
+        role: 'VIEWER',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      prismaMock.user.findUnique.mockResolvedValue(mockUser);
+      prismaMock.user.update.mockResolvedValue({ ...mockUser, role: 'ADMIN' });
+
+      const result = await service.updateRole(userId, 'admin');
+      expect(result.role).toBe('admin');
+    });
+  });
 });
