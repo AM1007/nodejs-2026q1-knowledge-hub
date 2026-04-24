@@ -1,8 +1,5 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { NotFoundError, ValidationError } from '../common/errors';
 import { validate as isUUID } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { ArticleStatus } from '@prisma/client';
@@ -38,14 +35,14 @@ export class ArticleService {
 
   async findOne(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid articleId: not a valid UUID');
+      throw new ValidationError('Invalid articleId: not a valid UUID');
     }
     const article = await this.prisma.article.findUnique({
       where: { id },
       include: { tags: true },
     });
     if (!article) {
-      throw new NotFoundException('Article not found');
+      throw new NotFoundError('Article not found');
     }
     return this.toResponse(article);
   }
@@ -121,11 +118,11 @@ export class ArticleService {
 
   async delete(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid articleId: not a valid UUID');
+      throw new ValidationError('Invalid articleId: not a valid UUID');
     }
     const article = await this.prisma.article.findUnique({ where: { id } });
     if (!article) {
-      throw new NotFoundException('Article not found');
+      throw new NotFoundError('Article not found');
     }
 
     await this.prisma.article.delete({ where: { id } });

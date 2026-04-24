@@ -1,8 +1,5 @@
-import {
-  Injectable,
-  ForbiddenException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ValidationError, ForbiddenError } from '../common/errors';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
@@ -25,7 +22,7 @@ export class AuthService {
   async signup(dto: SignupDto) {
     const existing = await this.userService.findByLogin(dto.login);
     if (existing) {
-      throw new BadRequestException('Login is already taken');
+      throw new ValidationError('Login is already taken');
     }
     return this.userService.create(dto.login, dto.password);
   }
@@ -33,12 +30,12 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.userService.findByLogin(dto.login);
     if (!user) {
-      throw new ForbiddenException('Authentication failed');
+      throw new ForbiddenError('Authentication failed');
     }
 
     const matches = await bcrypt.compare(dto.password, user.password);
     if (!matches) {
-      throw new ForbiddenException('Authentication failed');
+      throw new ForbiddenError('Authentication failed');
     }
 
     return this.generateTokens({
@@ -50,7 +47,7 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     if (this.tokenBlacklist.has(refreshToken)) {
-      throw new ForbiddenException('Token has been revoked');
+      throw new ForbiddenError('Token has been revoked');
     }
 
     let payload: JwtPayload;
@@ -60,7 +57,7 @@ export class AuthService {
         secret: process.env.JWT_SECRET_REFRESH_KEY,
       });
     } catch {
-      throw new ForbiddenException('Invalid or expired refresh token');
+      throw new ForbiddenError('Invalid or expired refresh token');
     }
 
     return this.generateTokens({

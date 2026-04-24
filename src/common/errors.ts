@@ -16,12 +16,12 @@ export class ValidationError extends Error {
   }
 }
 
-export class UnauthorizedError extends Error {
-  public readonly statusCode = 401;
+export class UnprocessableError extends Error {
+  public readonly statusCode = 422;
 
-  constructor(message = 'Unauthorized') {
+  constructor(message = 'Unprocessable Entity') {
     super(message);
-    this.name = 'UnauthorizedError';
+    this.name = 'UnprocessableError';
   }
 }
 

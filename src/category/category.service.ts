@@ -1,8 +1,5 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { NotFoundError, ValidationError } from '../common/errors';
 import { validate as isUUID } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,11 +13,11 @@ export class CategoryService {
 
   async findOne(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid categoryId: not a valid UUID');
+      throw new ValidationError('Invalid categoryId: not a valid UUID');
     }
     const category = await this.prisma.category.findUnique({ where: { id } });
     if (!category) {
-      throw new NotFoundException('Category not found');
+      throw new NotFoundError('Category not found');
     }
     return category;
   }

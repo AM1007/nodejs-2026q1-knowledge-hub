@@ -1,9 +1,9 @@
+import { Injectable } from '@nestjs/common';
 import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+  NotFoundError,
+  ValidationError,
+  UnprocessableError,
+} from '../common/errors';
 import { validate as isUUID } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -20,11 +20,11 @@ export class CommentService {
 
   async findOne(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid commentId: not a valid UUID');
+      throw new ValidationError('Invalid commentId: not a valid UUID');
     }
     const comment = await this.prisma.comment.findUnique({ where: { id } });
     if (!comment) {
-      throw new NotFoundException('Comment not found');
+      throw new NotFoundError('Comment not found');
     }
     return this.toResponse(comment);
   }
@@ -34,7 +34,7 @@ export class CommentService {
       where: { id: articleId },
     });
     if (!article) {
-      throw new UnprocessableEntityException(
+      throw new UnprocessableError(
         'Article with given articleId does not exist',
       );
     }
@@ -51,11 +51,11 @@ export class CommentService {
 
   async delete(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid commentId: not a valid UUID');
+      throw new ValidationError('Invalid commentId: not a valid UUID');
     }
     const comment = await this.prisma.comment.findUnique({ where: { id } });
     if (!comment) {
-      throw new NotFoundException('Comment not found');
+      throw new NotFoundError('Comment not found');
     }
     await this.prisma.comment.delete({ where: { id } });
   }
