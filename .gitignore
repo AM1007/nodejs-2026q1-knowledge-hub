@@ -36,3 +36,7 @@ lerna-debug.log*
 
 .env
 /generated/prisma
+
+coverage/
+src/coverage/
+src/node_modules/

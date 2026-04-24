@@ -1,10 +1,10 @@
 import * as bcrypt from 'bcrypt';
+import { Injectable } from '@nestjs/common';
 import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+  NotFoundError,
+  ValidationError,
+  ForbiddenError,
+} from '../common/errors';
 import { validate as isUUID } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
@@ -21,11 +21,11 @@ export class UserService {
 
   async findOne(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid userId: not a valid UUID');
+      throw new ValidationError('Invalid userId: not a valid UUID');
     }
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('User not found');
     }
     return this.toResponse(user);
   }
@@ -44,16 +44,16 @@ export class UserService {
 
   async updatePassword(id: string, oldPassword: string, newPassword: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid userId: not a valid UUID');
+      throw new ValidationError('Invalid userId: not a valid UUID');
     }
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('User not found');
     }
 
     const matches = await bcrypt.compare(oldPassword, user.password);
     if (!matches) {
-      throw new ForbiddenException('Old password is wrong');
+      throw new ForbiddenError('Old password is wrong');
     }
 
     const hashed = await bcrypt.hash(newPassword, this.salt);
@@ -66,11 +66,11 @@ export class UserService {
 
   async updateRole(id: string, role: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid userId: not a valid UUID');
+      throw new ValidationError('Invalid userId: not a valid UUID');
     }
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('User not found');
     }
 
     const updated = await this.prisma.user.update({
@@ -82,11 +82,11 @@ export class UserService {
 
   async delete(id: string) {
     if (!isUUID(id)) {
-      throw new BadRequestException('Invalid userId: not a valid UUID');
+      throw new ValidationError('Invalid userId: not a valid UUID');
     }
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundError('User not found');
     }
 
     await this.prisma.$transaction([
