@@ -25,6 +25,15 @@ export class UnprocessableError extends Error {
   }
 }
 
+export class UnauthorizedError extends Error {
+  public readonly statusCode = 401;
+
+  constructor(message = 'Unauthorized') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
 export class ForbiddenError extends Error {
   public readonly statusCode = 403;
 
