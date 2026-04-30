@@ -14,6 +14,7 @@ import { CommentModule } from './comment/comment.module';
 import { LoggingMiddleware } from './common/logging.middleware';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { AiModule } from './ai/ai.module';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -25,6 +26,7 @@ import { APP_GUARD } from '@nestjs/core';
     CategoryModule,
     ArticleModule,
     CommentModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [
