@@ -1,12 +1,13 @@
 # Knowledge Hub API
 
-REST API for a Knowledge Hub platform built with NestJS, PostgreSQL, and Prisma ORM. Containerized with Docker.
+REST API for a Knowledge Hub platform built with NestJS, PostgreSQL, and Prisma ORM. Containerized with Docker. Includes AI-powered endpoints backed by Google Gemini.
 
 ## Prerequisites
 
 - Node.js 24.x.x (24.10.0 or higher)
 - npm
 - Docker & Docker Compose
+- A Google Gemini API key (see [AI Integration](#ai-integration))
 
 ## Installation
 
@@ -26,20 +27,25 @@ cp .env.example .env
 
 Environment variables:
 
-| Variable                    | Description              | Default         |
-| --------------------------- | ------------------------ | --------------- |
-| `PORT`                      | Application port         | `4000`          |
-| `CRYPT_SALT`                | Bcrypt salt rounds       | `10`            |
-| `JWT_SECRET_KEY`            | JWT access token secret  | —               |
-| `JWT_SECRET_REFRESH_KEY`    | JWT refresh token secret | —               |
-| `TOKEN_EXPIRE_TIME`         | Access token TTL         | `1h`            |
-| `TOKEN_REFRESH_EXPIRE_TIME` | Refresh token TTL        | `24h`           |
-| `POSTGRES_USER`             | PostgreSQL username      | `postgres`      |
-| `POSTGRES_PASSWORD`         | PostgreSQL password      | `postgres`      |
-| `POSTGRES_DB`               | PostgreSQL database name | `knowledge_hub` |
-| `POSTGRES_HOST`             | PostgreSQL host          | `db`            |
-| `POSTGRES_PORT`             | PostgreSQL port          | `5432`          |
-| `DATABASE_URL`              | Prisma connection string | —               |
+| Variable                    | Description                          | Default                                     |
+| --------------------------- | ------------------------------------ | ------------------------------------------- |
+| `PORT`                      | Application port                     | `4000`                                      |
+| `CRYPT_SALT`                | Bcrypt salt rounds                   | `10`                                        |
+| `JWT_SECRET_KEY`            | JWT access token secret              | —                                           |
+| `JWT_SECRET_REFRESH_KEY`    | JWT refresh token secret             | —                                           |
+| `TOKEN_EXPIRE_TIME`         | Access token TTL                     | `1h`                                        |
+| `TOKEN_REFRESH_EXPIRE_TIME` | Refresh token TTL                    | `24h`                                       |
+| `POSTGRES_USER`             | PostgreSQL username                  | `postgres`                                  |
+| `POSTGRES_PASSWORD`         | PostgreSQL password                  | `postgres`                                  |
+| `POSTGRES_DB`               | PostgreSQL database name             | `knowledge_hub`                             |
+| `POSTGRES_HOST`             | PostgreSQL host                      | `db`                                        |
+| `POSTGRES_PORT`             | PostgreSQL port                      | `5432`                                      |
+| `DATABASE_URL`              | Prisma connection string             | —                                           |
+| `GEMINI_API_KEY`            | Google Gemini API key                | —                                           |
+| `GEMINI_API_BASE_URL`       | Gemini API base URL                  | `https://generativelanguage.googleapis.com` |
+| `GEMINI_MODEL`              | Gemini model identifier              | `gemini-2.0-flash`                          |
+| `AI_RATE_LIMIT_RPM`         | Max AI requests per minute           | `20`                                        |
+| `AI_CACHE_TTL_SEC`          | Cache TTL for AI responses (seconds) | `300`                                       |
 
 ## Running with Docker
 
@@ -116,7 +122,34 @@ The application will be available at `http://localhost:4000`.
 - Deleting a Category sets `categoryId` to `null` in associated articles
 - Deleting an Article removes all associated comments and tag relations
 
+## Authentication
+
+Most endpoints require a JWT access token. To obtain one:
+
+```bash
+# Sign up (creates a user with VIEWER role)
+curl -X POST http://localhost:4000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"login":"yourlogin","password":"YourPass123!"}'
+
+# Log in to get tokens
+curl -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"yourlogin","password":"YourPass123!"}'
+```
+
+The login response contains `accessToken` and `refreshToken`. Use the access token in the `Authorization: Bearer <token>` header for protected endpoints.
+
+Tokens expire after one hour. Use `POST /auth/refresh` with the refresh token to obtain a new access token.
+
 ## API Endpoints
+
+### Auth (`/auth`)
+
+- `POST /auth/signup` — create new user
+- `POST /auth/login` — get access and refresh tokens
+- `POST /auth/refresh` — get a new access token using a refresh token
+- `POST /auth/logout` — invalidate refresh token
 
 ### Users (`/user`)
 
@@ -149,16 +182,122 @@ The application will be available at `http://localhost:4000`.
 - `POST /comment` — create comment (body: `content`, `articleId`, optional `authorId`)
 - `DELETE /comment/:id` — delete comment
 
+### AI (`/ai`)
+
+All AI endpoints (except `/ai/health`) require a valid JWT access token. They are rate-limited and counted in the usage tracker.
+
+- `GET /ai/health` — liveness probe (public, no auth required)
+- `GET /ai/usage` — current AI usage statistics (totals, per-endpoint counters, token usage)
+- `POST /ai/articles/:articleId/summarize` — summarize an article (body: optional `maxLength: 'short' | 'medium' | 'detailed'`)
+- `POST /ai/articles/:articleId/translate` — translate an article (body: required `targetLanguage`, optional `sourceLanguage`)
+- `POST /ai/articles/:articleId/analyze` — analyze an article (body: optional `task: 'review' | 'bugs' | 'optimize' | 'explain'`)
+- `POST /ai/generate` — free-form text generation (body: required `prompt`)
+
+Detailed configuration and behavior are described in the [AI Integration](#ai-integration) section.
+
 ### API Documentation
 
 After starting the application, OpenAPI (Swagger) documentation is available at: `http://localhost:4000/doc`
 
-## Testing
+## AI Integration
 
-Run all tests (application must be running):
+The Knowledge Hub API integrates with Google Gemini to provide AI-powered operations on articles.
+
+### Getting a Gemini API key
+
+1. Open [Google AI Studio](https://aistudio.google.com/).
+2. Sign in with a Google account.
+3. Go to **Get API key** in the left sidebar (or visit [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) directly).
+4. Click **Create API key** and select an existing Google Cloud project, or let Google create a new one.
+5. Copy the generated key — it is shown only once.
+
+Paste the key into your local `.env` file as `GEMINI_API_KEY=...`. The `.env` file is git-ignored and must not be committed.
+
+### Model used
+
+The implementation reads the model from the `GEMINI_MODEL` environment variable. The default in `.env.example` is `gemini-2.0-flash` per the assignment specification, but the local development environment uses **`gemini-2.5-flash-lite`** because the free-tier quota for `gemini-2.0-flash` was unavailable in the development region.
+
+Both models support `generateContent` and produce equivalent functional output for this assignment. To use a different Gemini model, change `GEMINI_MODEL` in `.env` and restart the server. No code changes are required.
+
+To list models available to your API key:
 
 ```bash
-npm run test
+curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"
+```
+
+### Quick start for AI endpoints
+
+After completing the steps in [Installation](#installation) and [Configuration](#configuration), and obtaining a Gemini API key:
+
+1. Start the database:
+
+   ```bash
+   docker-compose up db -d
+   ```
+
+2. Apply migrations and seed:
+
+   ```bash
+   npx prisma migrate dev
+   npx prisma db seed
+   ```
+
+3. Start the application:
+
+   ```bash
+   npm run start:dev
+   ```
+
+4. Verify the AI module is loaded:
+
+   ```bash
+   curl http://localhost:4000/ai/health
+   # → {"status":"ok"}
+   ```
+
+5. Obtain an access token (see [Authentication](#authentication)) and call an AI endpoint, for example:
+
+   ```bash
+   curl -X POST http://localhost:4000/ai/articles/<articleId>/summarize \
+     -H "Authorization: Bearer <accessToken>" \
+     -H "Content-Type: application/json" \
+     -d '{"maxLength":"short"}'
+   ```
+
+### Behavior and configuration
+
+- **Rate limiting.** AI endpoints are limited to `AI_RATE_LIMIT_RPM` requests per minute (default 20). When exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header. The non-AI endpoints have a separate, more permissive limit.
+- **Caching.** Responses for `summarize` and `translate` are cached in memory using a deterministic key based on `articleId`, request parameters, and the article's `updatedAt` timestamp. The TTL is configured via `AI_CACHE_TTL_SEC` (default 300 seconds). Cache is automatically invalidated when an article is updated, because `updatedAt` changes the cache key. `analyze` and `generate` results are not cached.
+- **Error handling.** Network errors and timeouts (30 seconds) are retried up to three times with exponential backoff. Upstream `429` and `5xx` from Gemini are also retried. After all retries fail, the API returns `503 Service Unavailable`. Authentication errors from Gemini (`401`/`403`) return `500 Internal Server Error` without exposing the API key.
+- **Usage tracking.** Total request count, per-endpoint counters, and Gemini token usage are tracked in memory since service startup, and exposed via `GET /ai/usage`. Cache hits do not increment counters, since they do not call Gemini.
+- **Prompt templates.** Prompts for summarize, translate, and analyze are stored in `src/ai/prompts/` as builder functions. They are not hardcoded in controllers or services.
+
+### Known limitations
+
+- **Free-tier quota.** Google Gemini free tier enforces per-minute and daily limits on requests and tokens. During heavy testing the API may return `503` after retries fail on `429`. Wait 60–120 seconds and retry, or activate billing on your Google Cloud project for higher limits.
+- **Latency.** Each non-cached AI request takes 2–10 seconds depending on the model and content size. Cache hits return in under 100 milliseconds.
+- **Regional availability.** Some Gemini models are not available on free tier in all regions. If `gemini-2.0-flash` returns `429` with `limit: 0` immediately, switch to `gemini-2.5-flash-lite` via the `GEMINI_MODEL` environment variable.
+- **In-memory state.** The cache and usage counters are not persistent. They are reset on every service restart. This is intentional per the assignment specification.
+- **Analyze endpoint.** Gemini may occasionally return malformed JSON for the `analyze` task. The service includes a fallback that places the raw text into the `analysis` field with empty `suggestions` and `severity: "info"`.
+
+## Testing
+
+The project includes both end-to-end (Jest) and unit (Vitest) tests.
+
+End-to-end tests (require running database):
+
+```bash
+npm run test            # all e2e specs
+npm run test:auth       # auth-related specs
+npm run test:rbac       # RBAC specs
+npm run test:refresh    # refresh-token specs
+```
+
+Unit tests:
+
+```bash
+npm run test:unit
+npm run test:coverage   # with coverage report
 ```
 
 ## Security Scan
