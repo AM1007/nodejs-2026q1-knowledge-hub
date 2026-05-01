@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from './gemini.service';
 import { CacheService } from './cache.service';
 import { UsageService } from './usage.service';
+import { validateAnalyzeResponse } from './schemas/analyze-response.schema';
 import {
   buildSummarizePrompt,
   buildTranslatePrompt,
@@ -14,6 +15,7 @@ import {
   AnalyzeArticleDto,
   GenerateDto,
 } from './dto';
+import { ConversationService } from './conversation.service';
 
 interface AnalyzeResult {
   analysis: string;
@@ -41,6 +43,7 @@ export class AiService {
     private readonly gemini: GeminiService,
     private readonly cache: CacheService,
     private readonly usage: UsageService,
+    private readonly conversation: ConversationService,
   ) {}
 
   async summarize(
@@ -54,8 +57,9 @@ export class AiService {
     if (cached) return cached;
 
     const prompt = buildSummarizePrompt(article.content, dto.maxLength);
+    const startedAt = Date.now();
     const { text: summary, usage } = await this.gemini.generate(prompt);
-    this.usage.recordRequest('summarize', usage);
+    this.usage.recordRequest('summarize', usage, Date.now() - startedAt);
 
     const result: SummarizeResult = {
       articleId,
@@ -83,8 +87,9 @@ export class AiService {
       dto.targetLanguage,
       dto.sourceLanguage,
     );
+    const startedAt = Date.now();
     const { text: translatedText, usage } = await this.gemini.generate(prompt);
-    this.usage.recordRequest('translate', usage);
+    this.usage.recordRequest('translate', usage, Date.now() - startedAt);
 
     const result: TranslateResult = {
       articleId,
@@ -100,8 +105,9 @@ export class AiService {
     const article = await this.findArticleOrThrow(articleId);
 
     const prompt = buildAnalyzePrompt(article.content, dto.task);
+    const startedAt = Date.now();
     const { text: raw, usage } = await this.gemini.generate(prompt);
-    this.usage.recordRequest('analyze', usage);
+    this.usage.recordRequest('analyze', usage, Date.now() - startedAt);
 
     const parsed = this.tryParseAnalyzeResult(raw);
 
@@ -109,6 +115,36 @@ export class AiService {
       articleId,
       ...parsed,
     };
+  }
+
+  async generate(
+    dto: GenerateDto,
+  ): Promise<{ text: string; sessionId?: string }> {
+    const startedAt = Date.now();
+
+    if (dto.sessionId) {
+      const history = this.conversation.getHistory(dto.sessionId);
+      const messages = [
+        ...history,
+        { role: 'user' as const, text: dto.prompt },
+      ];
+
+      const { text, usage } = await this.gemini.generateWithHistory(messages);
+      this.usage.recordRequest('generate', usage, Date.now() - startedAt);
+
+      this.conversation.appendMessages(
+        dto.sessionId,
+        { role: 'user', text: dto.prompt },
+        { role: 'model', text },
+      );
+
+      return { text, sessionId: dto.sessionId };
+    }
+
+    const { text, usage } = await this.gemini.generate(dto.prompt);
+    this.usage.recordRequest('generate', usage, Date.now() - startedAt);
+
+    return { text };
   }
 
   private buildSummarizeKey(
@@ -127,13 +163,6 @@ export class AiService {
   ): string {
     const source = dto.sourceLanguage ?? '';
     return `translate:${articleId}:${updatedAt.getTime()}:${dto.targetLanguage}:${source}`;
-  }
-
-  async generate(dto: GenerateDto): Promise<{ text: string }> {
-    const { text, usage } = await this.gemini.generate(dto.prompt);
-    this.usage.recordRequest('generate', usage);
-
-    return { text };
   }
 
   private async findArticleOrThrow(articleId: string) {
@@ -155,23 +184,30 @@ export class AiService {
       .replace(/^```\s*/i, '')
       .replace(/\s*```\s*$/i, '');
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(cleaned);
-      return {
-        analysis: parsed.analysis ?? '',
-        suggestions: Array.isArray(parsed.suggestions)
-          ? parsed.suggestions
-          : [],
-        severity: ['info', 'warning', 'error'].includes(parsed.severity)
-          ? parsed.severity
-          : 'info',
-      };
+      parsed = JSON.parse(cleaned);
     } catch {
-      return {
-        analysis: raw,
-        suggestions: [],
-        severity: 'info',
-      };
+      return this.fallbackAnalyzeResult(raw);
     }
+
+    const validated = validateAnalyzeResponse(parsed);
+    if (!validated) {
+      return this.fallbackAnalyzeResult(raw);
+    }
+
+    return {
+      analysis: validated.analysis,
+      suggestions: validated.suggestions,
+      severity: validated.severity,
+    };
+  }
+
+  private fallbackAnalyzeResult(raw: string): AnalyzeResult {
+    return {
+      analysis: raw,
+      suggestions: [],
+      severity: 'info',
+    };
   }
 }

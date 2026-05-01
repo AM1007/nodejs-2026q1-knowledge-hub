@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GeminiUsage } from './usage.service';
+import { ConversationMessage } from './conversation.service';
 
 interface GeminiResponse {
   candidates: Array<{
@@ -49,9 +50,18 @@ export class GeminiService {
   }
 
   async generate(prompt: string): Promise<GeminiResult> {
+    return this.generateWithHistory([{ role: 'user', text: prompt }]);
+  }
+
+  async generateWithHistory(
+    messages: ConversationMessage[],
+  ): Promise<GeminiResult> {
     const url = `${this.baseUrl}/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
     const body = JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: messages.map((m) => ({
+        role: m.role,
+        parts: [{ text: m.text }],
+      })),
     });
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
