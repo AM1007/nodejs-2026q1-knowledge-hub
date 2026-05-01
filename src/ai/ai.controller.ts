@@ -1,10 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
-import { GeminiService } from './gemini.service';
+import { AiService } from './ai.service';
+import {
+  AnalyzeArticleDto,
+  SummarizeArticleDto,
+  TranslateArticleDto,
+} from './dto';
 
 @Controller('ai')
 export class AiController {
-  constructor(private readonly geminiService: GeminiService) {}
+  constructor(private readonly aiService: AiService) {}
 
   @Public()
   @Get('health')
@@ -12,12 +18,30 @@ export class AiController {
     return { status: 'ok' };
   }
 
-  @Public()
-  @Get('test')
-  async test() {
-    const result = await this.geminiService.generate(
-      'Reply with one word: pong',
-    );
-    return { result };
+  @UseGuards(JwtAuthGuard)
+  @Post('articles/:articleId/summarize')
+  summarize(
+    @Param('articleId') articleId: string,
+    @Body() dto: SummarizeArticleDto,
+  ) {
+    return this.aiService.summarize(articleId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('articles/:articleId/translate')
+  translate(
+    @Param('articleId') articleId: string,
+    @Body() dto: TranslateArticleDto,
+  ) {
+    return this.aiService.translate(articleId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('articles/:articleId/analyze')
+  analyze(
+    @Param('articleId') articleId: string,
+    @Body() dto: AnalyzeArticleDto,
+  ) {
+    return this.aiService.analyze(articleId, dto);
   }
 }
