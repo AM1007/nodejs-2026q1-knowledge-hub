@@ -12,8 +12,10 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { AiService } from './ai.service';
+import { UsageService } from './usage.service';
 import {
   AnalyzeArticleDto,
+  GenerateDto,
   SummarizeArticleDto,
   TranslateArticleDto,
 } from './dto';
@@ -23,12 +25,21 @@ const AI_RATE_LIMIT_RPM = Number(process.env.AI_RATE_LIMIT_RPM ?? 20);
 @Controller('ai')
 @Throttle({ default: { limit: AI_RATE_LIMIT_RPM, ttl: 60_000 } })
 export class AiController {
-  constructor(private readonly aiService: AiService) {}
+  constructor(
+    private readonly aiService: AiService,
+    private readonly usageService: UsageService,
+  ) {}
 
   @Public()
   @Get('health')
   getHealth() {
     return { status: 'ok' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('usage')
+  getUsage() {
+    return this.usageService.getStats();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -59,5 +70,12 @@ export class AiController {
     @Body() dto: AnalyzeArticleDto,
   ) {
     return this.aiService.analyze(articleId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('generate')
+  generate(@Body() dto: GenerateDto) {
+    return this.aiService.generate(dto);
   }
 }

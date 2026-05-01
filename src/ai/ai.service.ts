@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from './gemini.service';
 import { CacheService } from './cache.service';
+import { UsageService } from './usage.service';
 import {
   buildSummarizePrompt,
   buildTranslatePrompt,
@@ -11,6 +12,7 @@ import {
   SummarizeArticleDto,
   TranslateArticleDto,
   AnalyzeArticleDto,
+  GenerateDto,
 } from './dto';
 
 interface AnalyzeResult {
@@ -38,6 +40,7 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly gemini: GeminiService,
     private readonly cache: CacheService,
+    private readonly usage: UsageService,
   ) {}
 
   async summarize(
@@ -51,7 +54,8 @@ export class AiService {
     if (cached) return cached;
 
     const prompt = buildSummarizePrompt(article.content, dto.maxLength);
-    const summary = await this.gemini.generate(prompt);
+    const { text: summary, usage } = await this.gemini.generate(prompt);
+    this.usage.recordRequest('summarize', usage);
 
     const result: SummarizeResult = {
       articleId,
@@ -79,7 +83,8 @@ export class AiService {
       dto.targetLanguage,
       dto.sourceLanguage,
     );
-    const translatedText = await this.gemini.generate(prompt);
+    const { text: translatedText, usage } = await this.gemini.generate(prompt);
+    this.usage.recordRequest('translate', usage);
 
     const result: TranslateResult = {
       articleId,
@@ -95,7 +100,8 @@ export class AiService {
     const article = await this.findArticleOrThrow(articleId);
 
     const prompt = buildAnalyzePrompt(article.content, dto.task);
-    const raw = await this.gemini.generate(prompt);
+    const { text: raw, usage } = await this.gemini.generate(prompt);
+    this.usage.recordRequest('analyze', usage);
 
     const parsed = this.tryParseAnalyzeResult(raw);
 
@@ -121,6 +127,13 @@ export class AiService {
   ): string {
     const source = dto.sourceLanguage ?? '';
     return `translate:${articleId}:${updatedAt.getTime()}:${dto.targetLanguage}:${source}`;
+  }
+
+  async generate(dto: GenerateDto): Promise<{ text: string }> {
+    const { text, usage } = await this.gemini.generate(dto.prompt);
+    this.usage.recordRequest('generate', usage);
+
+    return { text };
   }
 
   private async findArticleOrThrow(articleId: string) {

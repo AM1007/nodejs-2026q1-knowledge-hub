@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GeminiUsage } from './usage.service';
 
 interface GeminiResponse {
   candidates: Array<{
@@ -12,6 +13,12 @@ interface GeminiResponse {
       parts: Array<{ text: string }>;
     };
   }>;
+  usageMetadata?: GeminiUsage;
+}
+
+export interface GeminiResult {
+  text: string;
+  usage?: GeminiUsage;
 }
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -41,7 +48,7 @@ export class GeminiService {
     );
   }
 
-  async generate(prompt: string): Promise<string> {
+  async generate(prompt: string): Promise<GeminiResult> {
     const url = `${this.baseUrl}/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
     const body = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
@@ -53,7 +60,10 @@ export class GeminiService {
 
         if (response.ok) {
           const data = (await response.json()) as GeminiResponse;
-          return data.candidates[0].content.parts[0].text;
+          return {
+            text: data.candidates[0].content.parts[0].text,
+            usage: data.usageMetadata,
+          };
         }
 
         if (this.isAuthError(response.status)) {
