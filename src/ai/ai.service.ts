@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeminiService } from './gemini.service';
+import { CacheService } from './cache.service';
 import {
   buildSummarizePrompt,
   buildTranslatePrompt,
@@ -18,29 +19,60 @@ interface AnalyzeResult {
   severity: 'info' | 'warning' | 'error';
 }
 
+export interface SummarizeResult {
+  articleId: string;
+  summary: string;
+  originalLength: number;
+  summaryLength: number;
+}
+
+export interface TranslateResult {
+  articleId: string;
+  translatedText: string;
+  detectedLanguage: string;
+}
+
 @Injectable()
 export class AiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gemini: GeminiService,
+    private readonly cache: CacheService,
   ) {}
 
-  async summarize(articleId: string, dto: SummarizeArticleDto) {
+  async summarize(
+    articleId: string,
+    dto: SummarizeArticleDto,
+  ): Promise<SummarizeResult> {
     const article = await this.findArticleOrThrow(articleId);
+
+    const cacheKey = this.buildSummarizeKey(article.id, article.updatedAt, dto);
+    const cached = this.cache.get<SummarizeResult>(cacheKey);
+    if (cached) return cached;
 
     const prompt = buildSummarizePrompt(article.content, dto.maxLength);
     const summary = await this.gemini.generate(prompt);
 
-    return {
+    const result: SummarizeResult = {
       articleId,
       summary,
       originalLength: article.content.length,
       summaryLength: summary.length,
     };
+
+    this.cache.set(cacheKey, result);
+    return result;
   }
 
-  async translate(articleId: string, dto: TranslateArticleDto) {
+  async translate(
+    articleId: string,
+    dto: TranslateArticleDto,
+  ): Promise<TranslateResult> {
     const article = await this.findArticleOrThrow(articleId);
+
+    const cacheKey = this.buildTranslateKey(article.id, article.updatedAt, dto);
+    const cached = this.cache.get<TranslateResult>(cacheKey);
+    if (cached) return cached;
 
     const prompt = buildTranslatePrompt(
       article.content,
@@ -49,11 +81,14 @@ export class AiService {
     );
     const translatedText = await this.gemini.generate(prompt);
 
-    return {
+    const result: TranslateResult = {
       articleId,
       translatedText,
       detectedLanguage: dto.sourceLanguage ?? 'auto',
     };
+
+    this.cache.set(cacheKey, result);
+    return result;
   }
 
   async analyze(articleId: string, dto: AnalyzeArticleDto) {
@@ -68,6 +103,24 @@ export class AiService {
       articleId,
       ...parsed,
     };
+  }
+
+  private buildSummarizeKey(
+    articleId: string,
+    updatedAt: Date,
+    dto: SummarizeArticleDto,
+  ): string {
+    const length = dto.maxLength ?? 'medium';
+    return `summarize:${articleId}:${updatedAt.getTime()}:${length}`;
+  }
+
+  private buildTranslateKey(
+    articleId: string,
+    updatedAt: Date,
+    dto: TranslateArticleDto,
+  ): string {
+    const source = dto.sourceLanguage ?? '';
+    return `translate:${articleId}:${updatedAt.getTime()}:${dto.targetLanguage}:${source}`;
   }
 
   private async findArticleOrThrow(articleId: string) {
