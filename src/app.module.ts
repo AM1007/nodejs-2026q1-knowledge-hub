@@ -16,10 +16,12 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
     UserModule,
