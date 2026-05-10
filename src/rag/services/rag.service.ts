@@ -13,6 +13,17 @@ export interface IndexArticleResult {
   chunksIndexed: number;
 }
 
+export interface IndexBatchOptions {
+  onlyPublished?: boolean;
+  articleIds?: string[];
+}
+
+export interface IndexBatchResult {
+  indexedArticles: number;
+  indexedChunks: number;
+  vectorCollection: string;
+}
+
 @Injectable()
 export class RagService {
   private readonly logger = new Logger(RagService.name);
@@ -77,5 +88,36 @@ export class RagService {
     this.logger.log(`Indexed article ${articleId}: ${chunks.length} chunks`);
 
     return { articleId, chunksIndexed: chunks.length };
+  }
+
+  async indexBatch(options: IndexBatchOptions): Promise<IndexBatchResult> {
+    const onlyPublished = options.onlyPublished ?? true;
+
+    const articles = await this.prisma.article.findMany({
+      where: {
+        ...(options.articleIds && options.articleIds.length > 0
+          ? { id: { in: options.articleIds } }
+          : {}),
+        ...(onlyPublished ? { status: 'PUBLISHED' } : {}),
+      },
+      select: { id: true },
+    });
+
+    let indexedArticles = 0;
+    let indexedChunks = 0;
+
+    for (const article of articles) {
+      const result = await this.indexArticle(article.id);
+      if (result.chunksIndexed > 0) {
+        indexedArticles += 1;
+        indexedChunks += result.chunksIndexed;
+      }
+    }
+
+    return {
+      indexedArticles,
+      indexedChunks,
+      vectorCollection: this.qdrant.collectionName,
+    };
   }
 }

@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { QdrantService } from './services/qdrant.service';
-import { GeminiEmbeddingsService } from './services/gemini-embeddings.service';
+import { RagController } from './rag.controller';
 import { ChunkerService } from './services/chunker.service';
+import { GeminiEmbeddingsService } from './services/gemini-embeddings.service';
+import { QdrantService } from './services/qdrant.service';
 import { RagService } from './services/rag.service';
 
 @Module({
   imports: [ConfigModule],
-  controllers: [],
+  controllers: [RagController],
   providers: [
     QdrantService,
     GeminiEmbeddingsService,

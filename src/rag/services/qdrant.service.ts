@@ -16,7 +16,7 @@ import {
 export class QdrantService implements OnModuleInit {
   private readonly logger = new Logger(QdrantService.name);
   private readonly baseUrl: string;
-  private readonly collectionName: string;
+  readonly collectionName: string;
   private readonly vectorSize: number;
 
   constructor(private readonly config: ConfigService) {
