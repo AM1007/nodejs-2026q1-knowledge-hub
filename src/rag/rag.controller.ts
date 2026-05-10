@@ -24,7 +24,7 @@ export class RagController {
   @HttpCode(HttpStatus.OK)
   async reindex(@Body() dto: ReindexDto) {
     this.logger.log(
-      `Reindex requested: onlyPublished=${dto.onlyPublished ?? true}, articleIds=${dto.articleIds?.length ?? 'all'}`,
+      `Reindex requested: onlyPublished=${dto.onlyPublished ?? true}, articleIds=${dto.articleIds?.length ?? 'all'}, force=${dto.force ?? false}`,
     );
     return this.ragService.indexBatch(dto);
   }

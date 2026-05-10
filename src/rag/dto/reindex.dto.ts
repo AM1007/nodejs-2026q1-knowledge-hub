@@ -11,4 +11,9 @@ export class ReindexDto {
   @IsArray()
   @IsUUID('4', { each: true })
   articleIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  force?: boolean;
 }

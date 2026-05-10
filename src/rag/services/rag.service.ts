@@ -26,11 +26,13 @@ export interface IndexArticleResult {
 export interface IndexBatchOptions {
   onlyPublished?: boolean;
   articleIds?: string[];
+  force?: boolean;
 }
 
 export interface IndexBatchResult {
   indexedArticles: number;
   indexedChunks: number;
+  skippedArticles: number;
   vectorCollection: string;
 }
 
@@ -160,6 +162,7 @@ export class RagService {
 
   async indexBatch(options: IndexBatchOptions): Promise<IndexBatchResult> {
     const onlyPublished = options.onlyPublished ?? true;
+    const force = options.force ?? false;
 
     const articles = await this.prisma.article.findMany({
       where: {
@@ -168,13 +171,28 @@ export class RagService {
           : {}),
         ...(onlyPublished ? { status: 'PUBLISHED' } : {}),
       },
-      select: { id: true },
+      select: { id: true, updatedAt: true },
     });
 
     let indexedArticles = 0;
     let indexedChunks = 0;
+    let skippedArticles = 0;
 
     for (const article of articles) {
+      if (!force) {
+        const indexedAt = await this.qdrant.getNewestChunkUpdatedAt(article.id);
+        if (
+          indexedAt !== null &&
+          indexedAt === article.updatedAt.toISOString()
+        ) {
+          skippedArticles += 1;
+          this.logger.log(
+            `Skipped article ${article.id}: already indexed at ${indexedAt}`,
+          );
+          continue;
+        }
+      }
+
       const result = await this.indexArticle(article.id);
       if (result.chunksIndexed > 0) {
         indexedArticles += 1;
@@ -185,6 +203,7 @@ export class RagService {
     return {
       indexedArticles,
       indexedChunks,
+      skippedArticles,
       vectorCollection: this.qdrant.collectionName,
     };
   }

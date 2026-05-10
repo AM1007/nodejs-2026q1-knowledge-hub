@@ -251,4 +251,49 @@ export class QdrantService implements OnModuleInit {
     const data = (await response.json()) as { result: { count: number } };
     return data.result.count;
   }
+
+  async getNewestChunkUpdatedAt(articleId: string): Promise<string | null> {
+    const url = `${this.baseUrl}/collections/${this.collectionName}/points/scroll`;
+    const body = {
+      filter: {
+        must: [{ key: 'articleId', match: { value: articleId } }],
+      },
+      limit: 1,
+      with_payload: true,
+      with_vector: false,
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Qdrant scroll unreachable: ${message}`);
+      throw new ServiceUnavailableException('Qdrant is not reachable');
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.error(
+        `Qdrant scroll failed: ${response.status} ${text.slice(0, 200)}`,
+      );
+      throw new ServiceUnavailableException(
+        `Qdrant scroll failed: ${response.status}`,
+      );
+    }
+
+    const data = (await response.json()) as {
+      result: { points: Array<{ payload: { updatedAt: string } }> };
+    };
+
+    if (data.result.points.length === 0) {
+      return null;
+    }
+
+    return data.result.points[0].payload.updatedAt;
+  }
 }
