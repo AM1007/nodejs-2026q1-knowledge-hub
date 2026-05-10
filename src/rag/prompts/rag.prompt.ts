@@ -30,3 +30,24 @@ export function buildRagPrompt(input: RagPromptInput): string {
     `Question: ${input.question}`,
   ].join('\n');
 }
+
+export interface RerankPromptInput {
+  question: string;
+  candidates: Array<{ index: number; text: string }>;
+  topK: number;
+}
+
+export function buildRerankPrompt(input: RerankPromptInput): string {
+  const list = input.candidates.map((c) => `[${c.index}] ${c.text}`).join('\n');
+
+  return [
+    `You are a relevance ranker. Pick the ${input.topK} most relevant items for the question.`,
+    'Return ONLY a JSON array of integer ids in best-to-worst order.',
+    'No prose, no code fences, no explanation. Example: [3,1,4,2,0]',
+    '',
+    `Question: ${input.question}`,
+    '',
+    'Items:',
+    list,
+  ].join('\n');
+}

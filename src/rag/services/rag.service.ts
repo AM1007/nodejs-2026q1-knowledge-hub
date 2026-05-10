@@ -1,18 +1,20 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import { v5 as uuidv5 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
+import { GeminiService } from '../../ai/gemini.service';
+import { ConversationMessage } from '../../ai/conversation.service';
 import { ChunkerService } from './chunker.service';
 import { GeminiEmbeddingsService } from './gemini-embeddings.service';
 import { QdrantService } from './qdrant.service';
+import { RagConversationService } from './rag-conversation.service';
 import {
   QdrantPoint,
   QdrantFilterCondition,
+  QdrantScoredPoint,
 } from '../interfaces/qdrant.interfaces';
-import { randomUUID } from 'node:crypto';
-import { GeminiService } from '../../ai/gemini.service';
-import { ConversationMessage } from '../../ai/conversation.service';
-import { RagConversationService } from './rag-conversation.service';
-import { buildRagPrompt } from '../prompts/rag.prompt';
+import { buildRagPrompt, buildRerankPrompt } from '../prompts/rag.prompt';
 
 const RAG_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
@@ -73,6 +75,8 @@ export interface ChatResponse {
 @Injectable()
 export class RagService {
   private readonly logger = new Logger(RagService.name);
+  private readonly rerankEnabled: boolean;
+  private readonly rerankOverfetch: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -81,7 +85,19 @@ export class RagService {
     private readonly qdrant: QdrantService,
     private readonly gemini: GeminiService,
     private readonly conversations: RagConversationService,
-  ) {}
+    private readonly config: ConfigService,
+  ) {
+    this.rerankEnabled =
+      this.config.get<string>('RAG_RERANK_ENABLED', 'false').toLowerCase() ===
+      'true';
+
+    const overfetchRaw = parseInt(
+      this.config.get<string>('RAG_RERANK_OVERFETCH', '10'),
+      10,
+    );
+    this.rerankOverfetch =
+      Number.isNaN(overfetchRaw) || overfetchRaw < 1 ? 10 : overfetchRaw;
+  }
 
   async indexArticle(articleId: string): Promise<IndexArticleResult> {
     const article = await this.prisma.article.findUnique({
@@ -128,9 +144,9 @@ export class RagService {
           status: article.status,
           authorId: article.authorId,
           categoryId: article.categoryId,
+          tags: article.tags.map((t) => t.name),
           updatedAt: article.updatedAt.toISOString(),
           title: article.title,
-          tags: article.tags.map((t) => t.name),
         },
       });
     }
@@ -204,7 +220,20 @@ export class RagService {
     }
 
     const filter = must.length > 0 ? { must } : undefined;
-    const points = await this.qdrant.search(queryVector, limit, filter);
+
+    const fetchLimit = this.rerankEnabled
+      ? Math.max(limit, this.rerankOverfetch)
+      : limit;
+
+    const candidates = await this.qdrant.search(
+      queryVector,
+      fetchLimit,
+      filter,
+    );
+
+    const points = this.rerankEnabled
+      ? await this.rerankChunks(options.query, candidates, limit)
+      : candidates;
 
     return {
       results: points.map((point) => ({
@@ -224,7 +253,15 @@ export class RagService {
       'RETRIEVAL_QUERY',
     );
 
-    const points = await this.qdrant.search(queryVector, 5, undefined);
+    const fetchLimit = this.rerankEnabled ? this.rerankOverfetch : 5;
+    const candidates = await this.qdrant.search(
+      queryVector,
+      fetchLimit,
+      undefined,
+    );
+    const points = this.rerankEnabled
+      ? await this.rerankChunks(options.question, candidates, 5)
+      : candidates;
 
     const sources: ChatSource[] = points.map((p) => ({
       articleId: p.payload.articleId,
@@ -281,5 +318,71 @@ export class RagService {
     this.logger.log(
       `Removed article ${articleId} from index (${count} points)`,
     );
+  }
+
+  private async rerankChunks(
+    question: string,
+    candidates: QdrantScoredPoint[],
+    topK: number,
+  ): Promise<QdrantScoredPoint[]> {
+    if (candidates.length <= topK) {
+      return candidates;
+    }
+
+    const indexed = candidates.map((c, i) => ({
+      index: i,
+      text: c.payload.text,
+    }));
+
+    const prompt = buildRerankPrompt({ question, candidates: indexed, topK });
+
+    try {
+      const result = await this.gemini.generate(prompt);
+      const order = this.parseRerankOrder(result.text, candidates.length);
+
+      if (order.length === 0) {
+        this.logger.warn('Rerank returned no usable order, using original');
+        return candidates.slice(0, topK);
+      }
+
+      const reranked = order
+        .slice(0, topK)
+        .map((idx) => candidates[idx])
+        .filter((c): c is QdrantScoredPoint => c !== undefined);
+
+      if (reranked.length === 0) {
+        return candidates.slice(0, topK);
+      }
+
+      return reranked;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.warn(`Rerank failed, falling back to original: ${message}`);
+      return candidates.slice(0, topK);
+    }
+  }
+
+  private parseRerankOrder(text: string, max: number): number[] {
+    const cleaned = text
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
+
+    const match = cleaned.match(/\[[\s\S]*?\]/);
+    if (!match) return [];
+
+    try {
+      const parsed = JSON.parse(match[0]) as unknown;
+      if (!Array.isArray(parsed)) return [];
+
+      const ids = parsed.filter(
+        (v): v is number =>
+          typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max,
+      );
+
+      return [...new Set(ids)];
+    } catch {
+      return [];
+    }
   }
 }

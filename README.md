@@ -28,34 +28,36 @@ cp .env.example .env
 
 Environment variables:
 
-| Variable                        | Description                              | Default                                     |
-| ------------------------------- | ---------------------------------------- | ------------------------------------------- |
-| `PORT`                          | Application port                         | `4000`                                      |
-| `CRYPT_SALT`                    | Bcrypt salt rounds                       | `10`                                        |
-| `JWT_SECRET_KEY`                | JWT access token secret                  | —                                           |
-| `JWT_SECRET_REFRESH_KEY`        | JWT refresh token secret                 | —                                           |
-| `TOKEN_EXPIRE_TIME`             | Access token TTL                         | `1h`                                        |
-| `TOKEN_REFRESH_EXPIRE_TIME`     | Refresh token TTL                        | `24h`                                       |
-| `POSTGRES_USER`                 | PostgreSQL username                      | `postgres`                                  |
-| `POSTGRES_PASSWORD`             | PostgreSQL password                      | `postgres`                                  |
-| `POSTGRES_DB`                   | PostgreSQL database name                 | `knowledge_hub`                             |
-| `POSTGRES_HOST`                 | PostgreSQL host                          | `db`                                        |
-| `POSTGRES_PORT`                 | PostgreSQL port                          | `5432`                                      |
-| `DATABASE_URL`                  | Prisma connection string                 | —                                           |
-| `GEMINI_API_KEY`                | Google Gemini API key                    | —                                           |
-| `GEMINI_API_BASE_URL`           | Gemini API base URL                      | `https://generativelanguage.googleapis.com` |
-| `GEMINI_MODEL`                  | Gemini model identifier                  | `gemini-2.0-flash`                          |
-| `AI_RATE_LIMIT_RPM`             | Max AI requests per minute               | `20`                                        |
-| `AI_CACHE_TTL_SEC`              | Cache TTL for AI responses (seconds)     | `300`                                       |
-| `GEMINI_EMBEDDING_MODEL`        | Gemini model for embeddings              | `gemini-embedding-001`                      |
-| `GEMINI_EMBEDDING_DIMENSIONS`   | Embedding vector dimensions              | `768`                                       |
-| `RAG_VECTOR_DB_PROVIDER`        | Vector DB provider                       | `qdrant`                                    |
-| `RAG_VECTOR_DB_URL`             | Vector DB URL                            | `http://vectordb:6333`                      |
-| `RAG_VECTOR_COLLECTION`         | Vector collection name                   | `knowledge_hub_articles`                    |
-| `RAG_CHUNK_SIZE`                | Chunk size in characters                 | `800`                                       |
-| `RAG_CHUNK_OVERLAP`             | Overlap between chunks in characters     | `200`                                       |
-| `RAG_TOP_K`                     | Default number of chunks to retrieve     | `5`                                         |
-| `RAG_CONVERSATION_MAX_MESSAGES` | Max messages stored per RAG conversation | `20`                                        |
+| Variable                        | Description                                 | Default                                     |
+| ------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| `PORT`                          | Application port                            | `4000`                                      |
+| `CRYPT_SALT`                    | Bcrypt salt rounds                          | `10`                                        |
+| `JWT_SECRET_KEY`                | JWT access token secret                     | —                                           |
+| `JWT_SECRET_REFRESH_KEY`        | JWT refresh token secret                    | —                                           |
+| `TOKEN_EXPIRE_TIME`             | Access token TTL                            | `1h`                                        |
+| `TOKEN_REFRESH_EXPIRE_TIME`     | Refresh token TTL                           | `24h`                                       |
+| `POSTGRES_USER`                 | PostgreSQL username                         | `postgres`                                  |
+| `POSTGRES_PASSWORD`             | PostgreSQL password                         | `postgres`                                  |
+| `POSTGRES_DB`                   | PostgreSQL database name                    | `knowledge_hub`                             |
+| `POSTGRES_HOST`                 | PostgreSQL host                             | `db`                                        |
+| `POSTGRES_PORT`                 | PostgreSQL port                             | `5432`                                      |
+| `DATABASE_URL`                  | Prisma connection string                    | —                                           |
+| `GEMINI_API_KEY`                | Google Gemini API key                       | —                                           |
+| `GEMINI_API_BASE_URL`           | Gemini API base URL                         | `https://generativelanguage.googleapis.com` |
+| `GEMINI_MODEL`                  | Gemini model identifier                     | `gemini-2.0-flash`                          |
+| `AI_RATE_LIMIT_RPM`             | Max AI requests per minute                  | `20`                                        |
+| `AI_CACHE_TTL_SEC`              | Cache TTL for AI responses (seconds)        | `300`                                       |
+| `GEMINI_EMBEDDING_MODEL`        | Gemini model for embeddings                 | `gemini-embedding-001`                      |
+| `GEMINI_EMBEDDING_DIMENSIONS`   | Embedding vector dimensions                 | `768`                                       |
+| `RAG_VECTOR_DB_PROVIDER`        | Vector DB provider                          | `qdrant`                                    |
+| `RAG_VECTOR_DB_URL`             | Vector DB URL                               | `http://vectordb:6333`                      |
+| `RAG_VECTOR_COLLECTION`         | Vector collection name                      | `knowledge_hub_articles`                    |
+| `RAG_CHUNK_SIZE`                | Chunk size in characters                    | `800`                                       |
+| `RAG_CHUNK_OVERLAP`             | Overlap between chunks in characters        | `200`                                       |
+| `RAG_TOP_K`                     | Default number of chunks to retrieve        | `5`                                         |
+| `RAG_CONVERSATION_MAX_MESSAGES` | Max messages stored per RAG conversation    | `20`                                        |
+| `RAG_RERANK_ENABLED`            | Enable LLM-based re-ranking after retrieval | `true`                                      |
+| `RAG_RERANK_OVERFETCH`          | Candidates to fetch before re-ranking       | `10`                                        |
 
 ## Running with Docker
 
@@ -290,6 +292,7 @@ After completing the steps in [Installation](#installation) and [Configuration](
 - **Rate limiting.** AI endpoints are limited to `AI_RATE_LIMIT_RPM` requests per minute (default 20). When exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header. The non-AI endpoints have a separate, more permissive limit.
 - **Caching.** Responses for `summarize` and `translate` are cached in memory using a deterministic key based on `articleId`, request parameters, and the article's `updatedAt` timestamp. The TTL is configured via `AI_CACHE_TTL_SEC` (default 300 seconds). Cache is automatically invalidated when an article is updated, because `updatedAt` changes the cache key. `analyze` and `generate` results are not cached.
 - **Error handling.** Network errors and timeouts (30 seconds) are retried up to three times with exponential backoff. Upstream `429` and `5xx` from Gemini are also retried. After all retries fail, the API returns `503 Service Unavailable`. Authentication errors from Gemini (`401`/`403`) return `500 Internal Server Error` without exposing the API key.
+- **Re-ranking (hacker scope).** When `RAG_RERANK_ENABLED=true` (default), the application overfetches `RAG_RERANK_OVERFETCH` candidates (default 10) from Qdrant, then asks Gemini to rank them by relevance to the query and returns the top-K. This adds one Gemini call per search/chat request but improves the relevance of returned chunks compared to pure embedding similarity. If the rerank call fails or returns malformed output, the system falls back to the original top-K from Qdrant — no error is propagated to the client.
 - **Usage tracking.** Total request count, per-endpoint counters, and Gemini token usage are tracked in memory since service startup, and exposed via `GET /ai/usage`. Cache hits do not increment counters, since they do not call Gemini.
 - **Prompt templates.** Prompts for summarize, translate, and analyze are stored in `src/ai/prompts/` as builder functions. They are not hardcoded in controllers or services.
 
@@ -399,7 +402,8 @@ The response includes `answer`, `sources` (article id, title, the chunk used), a
 - **Free-tier quotas.** The same constraints as for non-RAG AI endpoints apply, plus an additional embedding call per chunk during indexing and per query during search. Indexing 100 long articles can consume significant daily token budget on the free tier.
 - **Sequential embedding.** During indexing, chunks are embedded one at a time. For 100 articles with 5 chunks each, indexing takes ~5–10 minutes. Batching via `:batchEmbedContents` would be a meaningful optimization but is not implemented in this iteration.
 - **No incremental indexing.** Every `POST /ai/rag/index` reindexes all matched articles, even if they have not changed since the last run. Production deployments should hook into article update events.
-- **No re-ranking.** Top-K chunks from Qdrant are passed directly to the prompt. Adding a re-ranker (cross-encoder or LLM-based) would likely improve answer quality but is not implemented.
+- **No hybrid retrieval.** Search is purely semantic (vector similarity). Lexical search via Postgres FTS is not combined with vector search.
+- **No incremental indexing.** Every `POST /ai/rag/index` reindexes all matched articles, even if they have not changed since the last run.
 - **In-memory conversation store.** RAG conversations are not persisted. They are lost on application restart and not shared across replicas.
 - **Vector schema migrations.** Changing the embedding model or dimensions requires manually recreating the Qdrant collection. The application detects mismatches at startup and refuses to run, but does not auto-migrate.
 
