@@ -10,6 +10,10 @@ import {
   QdrantCreateCollectionRequest,
   QdrantOperationResponse,
   QdrantPoint,
+  QdrantFilter,
+  QdrantScoredPoint,
+  QdrantSearchRequest,
+  QdrantSearchResponse,
 } from '../interfaces/qdrant.interfaces';
 
 @Injectable()
@@ -169,5 +173,38 @@ export class QdrantService implements OnModuleInit {
 
     const data = (await response.json()) as QdrantOperationResponse;
     return data.result ? 1 : 0;
+  }
+
+  async search(
+    vector: number[],
+    limit: number,
+    filter?: QdrantFilter,
+  ): Promise<QdrantScoredPoint[]> {
+    const url = `${this.baseUrl}/collections/${this.collectionName}/points/search`;
+    const body: QdrantSearchRequest = {
+      vector,
+      limit,
+      with_payload: true,
+      ...(filter ? { filter } : {}),
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.error(
+        `Qdrant search failed: ${response.status} ${text.slice(0, 200)}`,
+      );
+      throw new InternalServerErrorException(
+        `Qdrant search failed: ${response.status}`,
+      );
+    }
+
+    const data = (await response.json()) as QdrantSearchResponse;
+    return data.result;
   }
 }

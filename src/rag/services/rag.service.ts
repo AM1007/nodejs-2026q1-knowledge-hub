@@ -4,7 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ChunkerService } from './chunker.service';
 import { GeminiEmbeddingsService } from './gemini-embeddings.service';
 import { QdrantService } from './qdrant.service';
-import { QdrantPoint } from '../interfaces/qdrant.interfaces';
+import {
+  QdrantPoint,
+  QdrantFilterCondition,
+} from '../interfaces/qdrant.interfaces';
 
 const RAG_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
@@ -22,6 +25,27 @@ export interface IndexBatchResult {
   indexedArticles: number;
   indexedChunks: number;
   vectorCollection: string;
+}
+
+export type ArticleStatusFilter = 'draft' | 'published' | 'archived';
+
+export interface SearchOptions {
+  query: string;
+  limit?: number;
+  articleStatus?: ArticleStatusFilter;
+  categoryId?: string;
+  tags?: string[];
+}
+
+export interface SearchResult {
+  articleId: string;
+  articleTitle: string;
+  chunk: string;
+  similarity: number;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
 }
 
 @Injectable()
@@ -46,6 +70,9 @@ export class RagService {
         authorId: true,
         categoryId: true,
         updatedAt: true,
+        tags: {
+          select: { name: true },
+        },
       },
     });
 
@@ -79,6 +106,7 @@ export class RagService {
           categoryId: article.categoryId,
           updatedAt: article.updatedAt.toISOString(),
           title: article.title,
+          tags: article.tags.map((t) => t.name),
         },
       });
     }
@@ -118,6 +146,49 @@ export class RagService {
       indexedArticles,
       indexedChunks,
       vectorCollection: this.qdrant.collectionName,
+    };
+  }
+
+  async search(options: SearchOptions): Promise<SearchResponse> {
+    const limit = Math.min(options.limit ?? 5, 20);
+    const queryVector = await this.embeddings.embed(
+      options.query,
+      'RETRIEVAL_QUERY',
+    );
+
+    const must: QdrantFilterCondition[] = [];
+
+    if (options.articleStatus) {
+      must.push({
+        key: 'status',
+        match: { value: options.articleStatus.toUpperCase() },
+      });
+    }
+
+    if (options.categoryId) {
+      must.push({
+        key: 'categoryId',
+        match: { value: options.categoryId },
+      });
+    }
+
+    if (options.tags && options.tags.length > 0) {
+      must.push({
+        key: 'tags',
+        match: { any: options.tags },
+      });
+    }
+
+    const filter = must.length > 0 ? { must } : undefined;
+    const points = await this.qdrant.search(queryVector, limit, filter);
+
+    return {
+      results: points.map((point) => ({
+        articleId: point.payload.articleId,
+        articleTitle: point.payload.title,
+        chunk: point.payload.text,
+        similarity: point.score,
+      })),
     };
   }
 }
