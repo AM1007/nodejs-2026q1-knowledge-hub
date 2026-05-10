@@ -18,5 +18,6 @@ import { ConversationService } from './conversation.service';
     UsageService,
     ConversationService,
   ],
+  exports: [GeminiService],
 })
 export class AiModule {}

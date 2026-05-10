@@ -17,6 +17,7 @@ import { LoggingMiddleware } from './common/logging.middleware';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
+import { RagModule } from './rag/rag.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AiModule } from './ai/ai.module';
     ArticleModule,
     CommentModule,
     AiModule,
+    RagModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,0 +1,407 @@
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
+import { v5 as uuidv5 } from 'uuid';
+import { PrismaService } from '../../prisma/prisma.service';
+import { GeminiService } from '../../ai/gemini.service';
+import { ConversationMessage } from '../../ai/conversation.service';
+import { ChunkerService } from './chunker.service';
+import { GeminiEmbeddingsService } from './gemini-embeddings.service';
+import { QdrantService } from './qdrant.service';
+import { RagConversationService } from './rag-conversation.service';
+import {
+  QdrantPoint,
+  QdrantFilterCondition,
+  QdrantScoredPoint,
+} from '../interfaces/qdrant.interfaces';
+import { buildRagPrompt, buildRerankPrompt } from '../prompts/rag.prompt';
+
+const RAG_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+export interface IndexArticleResult {
+  articleId: string;
+  chunksIndexed: number;
+}
+
+export interface IndexBatchOptions {
+  onlyPublished?: boolean;
+  articleIds?: string[];
+  force?: boolean;
+}
+
+export interface IndexBatchResult {
+  indexedArticles: number;
+  indexedChunks: number;
+  skippedArticles: number;
+  vectorCollection: string;
+}
+
+export type ArticleStatusFilter = 'draft' | 'published' | 'archived';
+
+export interface SearchOptions {
+  query: string;
+  limit?: number;
+  articleStatus?: ArticleStatusFilter;
+  categoryId?: string;
+  tags?: string[];
+}
+
+export interface SearchResult {
+  articleId: string;
+  articleTitle: string;
+  chunk: string;
+  similarity: number;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+}
+
+export interface ChatOptions {
+  question: string;
+  conversationId?: string;
+}
+
+export interface ChatSource {
+  articleId: string;
+  articleTitle: string;
+  relevantChunk: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  sources: ChatSource[];
+  conversationId: string;
+}
+
+@Injectable()
+export class RagService {
+  private readonly logger = new Logger(RagService.name);
+  private readonly rerankEnabled: boolean;
+  private readonly rerankOverfetch: number;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chunker: ChunkerService,
+    private readonly embeddings: GeminiEmbeddingsService,
+    private readonly qdrant: QdrantService,
+    private readonly gemini: GeminiService,
+    private readonly conversations: RagConversationService,
+    private readonly config: ConfigService,
+  ) {
+    this.rerankEnabled =
+      this.config.get<string>('RAG_RERANK_ENABLED', 'false').toLowerCase() ===
+      'true';
+
+    const overfetchRaw = parseInt(
+      this.config.get<string>('RAG_RERANK_OVERFETCH', '10'),
+      10,
+    );
+    this.rerankOverfetch =
+      Number.isNaN(overfetchRaw) || overfetchRaw < 1 ? 10 : overfetchRaw;
+  }
+
+  async indexArticle(articleId: string): Promise<IndexArticleResult> {
+    const article = await this.prisma.article.findUnique({
+      where: { id: articleId },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        status: true,
+        authorId: true,
+        categoryId: true,
+        updatedAt: true,
+        tags: {
+          select: { name: true },
+        },
+      },
+    });
+
+    if (!article) {
+      throw new NotFoundException(`Article ${articleId} not found`);
+    }
+
+    await this.qdrant.deletePointsByArticleId(articleId);
+
+    const chunks = this.chunker.chunk(article.content);
+    if (chunks.length === 0) {
+      this.logger.warn(
+        `Article ${articleId} produced 0 chunks (empty content)`,
+      );
+      return { articleId, chunksIndexed: 0 };
+    }
+
+    const points: QdrantPoint[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const text = chunks[i];
+      const vector = await this.embeddings.embed(text, 'RETRIEVAL_DOCUMENT');
+      points.push({
+        id: uuidv5(`${articleId}:${i}`, RAG_NAMESPACE),
+        vector,
+        payload: {
+          articleId: article.id,
+          chunkIndex: i,
+          text,
+          status: article.status,
+          authorId: article.authorId,
+          categoryId: article.categoryId,
+          tags: article.tags.map((t) => t.name),
+          updatedAt: article.updatedAt.toISOString(),
+          title: article.title,
+        },
+      });
+    }
+
+    await this.qdrant.upsertPoints(points);
+
+    this.logger.log(`Indexed article ${articleId}: ${chunks.length} chunks`);
+
+    return { articleId, chunksIndexed: chunks.length };
+  }
+
+  async indexBatch(options: IndexBatchOptions): Promise<IndexBatchResult> {
+    const onlyPublished = options.onlyPublished ?? true;
+    const force = options.force ?? false;
+
+    const articles = await this.prisma.article.findMany({
+      where: {
+        ...(options.articleIds && options.articleIds.length > 0
+          ? { id: { in: options.articleIds } }
+          : {}),
+        ...(onlyPublished ? { status: 'PUBLISHED' } : {}),
+      },
+      select: { id: true, updatedAt: true },
+    });
+
+    let indexedArticles = 0;
+    let indexedChunks = 0;
+    let skippedArticles = 0;
+
+    for (const article of articles) {
+      if (!force) {
+        const indexedAt = await this.qdrant.getNewestChunkUpdatedAt(article.id);
+        if (
+          indexedAt !== null &&
+          indexedAt === article.updatedAt.toISOString()
+        ) {
+          skippedArticles += 1;
+          this.logger.log(
+            `Skipped article ${article.id}: already indexed at ${indexedAt}`,
+          );
+          continue;
+        }
+      }
+
+      const result = await this.indexArticle(article.id);
+      if (result.chunksIndexed > 0) {
+        indexedArticles += 1;
+        indexedChunks += result.chunksIndexed;
+      }
+    }
+
+    return {
+      indexedArticles,
+      indexedChunks,
+      skippedArticles,
+      vectorCollection: this.qdrant.collectionName,
+    };
+  }
+
+  async search(options: SearchOptions): Promise<SearchResponse> {
+    const limit = Math.min(options.limit ?? 5, 20);
+    const queryVector = await this.embeddings.embed(
+      options.query,
+      'RETRIEVAL_QUERY',
+    );
+
+    const must: QdrantFilterCondition[] = [];
+
+    if (options.articleStatus) {
+      must.push({
+        key: 'status',
+        match: { value: options.articleStatus.toUpperCase() },
+      });
+    }
+
+    if (options.categoryId) {
+      must.push({
+        key: 'categoryId',
+        match: { value: options.categoryId },
+      });
+    }
+
+    if (options.tags && options.tags.length > 0) {
+      must.push({
+        key: 'tags',
+        match: { any: options.tags },
+      });
+    }
+
+    const filter = must.length > 0 ? { must } : undefined;
+
+    const fetchLimit = this.rerankEnabled
+      ? Math.max(limit, this.rerankOverfetch)
+      : limit;
+
+    const candidates = await this.qdrant.search(
+      queryVector,
+      fetchLimit,
+      filter,
+    );
+
+    const points = this.rerankEnabled
+      ? await this.rerankChunks(options.query, candidates, limit)
+      : candidates;
+
+    return {
+      results: points.map((point) => ({
+        articleId: point.payload.articleId,
+        articleTitle: point.payload.title,
+        chunk: point.payload.text,
+        similarity: point.score,
+      })),
+    };
+  }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const conversationId = options.conversationId ?? randomUUID();
+
+    const queryVector = await this.embeddings.embed(
+      options.question,
+      'RETRIEVAL_QUERY',
+    );
+
+    const fetchLimit = this.rerankEnabled ? this.rerankOverfetch : 5;
+    const candidates = await this.qdrant.search(
+      queryVector,
+      fetchLimit,
+      undefined,
+    );
+    const points = this.rerankEnabled
+      ? await this.rerankChunks(options.question, candidates, 5)
+      : candidates;
+
+    const sources: ChatSource[] = points.map((p) => ({
+      articleId: p.payload.articleId,
+      articleTitle: p.payload.title,
+      relevantChunk: p.payload.text,
+    }));
+
+    const contextChunks = points.map((p) => ({
+      title: p.payload.title,
+      text: p.payload.text,
+    }));
+
+    const promptText = buildRagPrompt({
+      question: options.question,
+      contextChunks,
+    });
+
+    const history = this.conversations.getHistory(conversationId);
+    const messages: ConversationMessage[] = [
+      ...history,
+      { role: 'user', text: promptText },
+    ];
+
+    const result = await this.gemini.generateWithHistory(messages);
+
+    this.conversations.appendMessages(
+      conversationId,
+      { role: 'user', text: options.question },
+      { role: 'model', text: result.text },
+    );
+
+    this.logger.log(
+      `Chat in conversation ${conversationId}: ${sources.length} sources used`,
+    );
+
+    return {
+      answer: result.text,
+      sources,
+      conversationId,
+    };
+  }
+
+  async removeArticleFromIndex(articleId: string): Promise<void> {
+    const count = await this.qdrant.countPointsByArticleId(articleId);
+
+    if (count === 0) {
+      throw new NotFoundException(
+        `No index entries found for article ${articleId}`,
+      );
+    }
+
+    await this.qdrant.deletePointsByArticleId(articleId);
+
+    this.logger.log(
+      `Removed article ${articleId} from index (${count} points)`,
+    );
+  }
+
+  private async rerankChunks(
+    question: string,
+    candidates: QdrantScoredPoint[],
+    topK: number,
+  ): Promise<QdrantScoredPoint[]> {
+    if (candidates.length <= topK) {
+      return candidates;
+    }
+
+    const indexed = candidates.map((c, i) => ({
+      index: i,
+      text: c.payload.text,
+    }));
+
+    const prompt = buildRerankPrompt({ question, candidates: indexed, topK });
+
+    try {
+      const result = await this.gemini.generate(prompt);
+      const order = this.parseRerankOrder(result.text, candidates.length);
+
+      if (order.length === 0) {
+        this.logger.warn('Rerank returned no usable order, using original');
+        return candidates.slice(0, topK);
+      }
+
+      const reranked = order
+        .slice(0, topK)
+        .map((idx) => candidates[idx])
+        .filter((c): c is QdrantScoredPoint => c !== undefined);
+
+      if (reranked.length === 0) {
+        return candidates.slice(0, topK);
+      }
+
+      return reranked;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.warn(`Rerank failed, falling back to original: ${message}`);
+      return candidates.slice(0, topK);
+    }
+  }
+
+  private parseRerankOrder(text: string, max: number): number[] {
+    const cleaned = text
+      .replace(/```json\s*/gi, '')
+      .replace(/```\s*/g, '')
+      .trim();
+
+    const match = cleaned.match(/\[[\s\S]*?\]/);
+    if (!match) return [];
+
+    try {
+      const parsed = JSON.parse(match[0]) as unknown;
+      if (!Array.isArray(parsed)) return [];
+
+      const ids = parsed.filter(
+        (v): v is number =>
+          typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < max,
+      );
+
+      return [...new Set(ids)];
+    } catch {
+      return [];
+    }
+  }
+}

@@ -40,3 +40,6 @@ lerna-debug.log*
 coverage/
 src/coverage/
 src/node_modules/
+# Local project structure dump
+project-structure.txt
+save-structure.cjs
