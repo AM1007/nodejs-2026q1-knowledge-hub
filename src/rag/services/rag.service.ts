@@ -266,4 +266,20 @@ export class RagService {
       conversationId,
     };
   }
+
+  async removeArticleFromIndex(articleId: string): Promise<void> {
+    const count = await this.qdrant.countPointsByArticleId(articleId);
+
+    if (count === 0) {
+      throw new NotFoundException(
+        `No index entries found for article ${articleId}`,
+      );
+    }
+
+    await this.qdrant.deletePointsByArticleId(articleId);
+
+    this.logger.log(
+      `Removed article ${articleId} from index (${count} points)`,
+    );
+  }
 }

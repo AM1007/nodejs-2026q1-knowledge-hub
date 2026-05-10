@@ -207,4 +207,33 @@ export class QdrantService implements OnModuleInit {
     const data = (await response.json()) as QdrantSearchResponse;
     return data.result;
   }
+
+  async countPointsByArticleId(articleId: string): Promise<number> {
+    const url = `${this.baseUrl}/collections/${this.collectionName}/points/count`;
+    const body = {
+      filter: {
+        must: [{ key: 'articleId', match: { value: articleId } }],
+      },
+      exact: true,
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.error(
+        `Qdrant count failed: ${response.status} ${text.slice(0, 200)}`,
+      );
+      throw new InternalServerErrorException(
+        `Qdrant count failed: ${response.status}`,
+      );
+    }
+
+    const data = (await response.json()) as { result: { count: number } };
+    return data.result.count;
+  }
 }
