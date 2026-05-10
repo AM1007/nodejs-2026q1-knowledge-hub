@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -59,15 +60,15 @@ export class GeminiEmbeddingsService {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       this.logger.error(`Gemini embeddings request failed: ${message}`);
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         'Gemini embeddings service unreachable',
       );
     }
 
     if (!response.ok) {
-      const text = await response.text();
+      const errorText = await response.text();
       this.logger.error(
-        `Gemini embeddings ${response.status}: ${text.slice(0, 200)}`,
+        `Gemini embeddings ${response.status}: ${errorText.slice(0, 200)}`,
       );
       if (response.status === 401 || response.status === 403) {
         throw new InternalServerErrorException(
@@ -75,11 +76,11 @@ export class GeminiEmbeddingsService {
         );
       }
       if (response.status === 429) {
-        throw new InternalServerErrorException(
+        throw new ServiceUnavailableException(
           'Gemini embeddings rate limit exceeded',
         );
       }
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Gemini embeddings error: ${response.status}`,
       );
     }

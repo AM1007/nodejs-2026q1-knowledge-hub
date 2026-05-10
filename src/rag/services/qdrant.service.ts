@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -76,7 +77,7 @@ export class QdrantService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       this.logger.error(`Qdrant unreachable at ${this.baseUrl}: ${message}`);
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant is not reachable at ${this.baseUrl}`,
       );
     }
@@ -88,7 +89,7 @@ export class QdrantService implements OnModuleInit {
     if (!response.ok) {
       const text = await response.text();
       this.logger.error(`Qdrant GET ${url} failed: ${response.status} ${text}`);
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant returned ${response.status} on collection check`,
       );
     }
@@ -111,7 +112,7 @@ export class QdrantService implements OnModuleInit {
     if (!response.ok) {
       const text = await response.text();
       this.logger.error(`Qdrant PUT ${url} failed: ${response.status} ${text}`);
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Failed to create Qdrant collection: ${response.status}`,
       );
     }
@@ -141,7 +142,7 @@ export class QdrantService implements OnModuleInit {
       this.logger.error(
         `Qdrant upsert failed: ${response.status} ${text.slice(0, 200)}`,
       );
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant upsert failed: ${response.status}`,
       );
     }
@@ -166,7 +167,7 @@ export class QdrantService implements OnModuleInit {
       this.logger.error(
         `Qdrant delete failed: ${response.status} ${text.slice(0, 200)}`,
       );
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant delete failed: ${response.status}`,
       );
     }
@@ -188,18 +189,25 @@ export class QdrantService implements OnModuleInit {
       ...(filter ? { filter } : {}),
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Qdrant search unreachable: ${message}`);
+      throw new ServiceUnavailableException('Qdrant is not reachable');
+    }
 
     if (!response.ok) {
       const text = await response.text();
       this.logger.error(
         `Qdrant search failed: ${response.status} ${text.slice(0, 200)}`,
       );
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant search failed: ${response.status}`,
       );
     }
@@ -217,18 +225,25 @@ export class QdrantService implements OnModuleInit {
       exact: true,
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Qdrant count unreachable: ${message}`);
+      throw new ServiceUnavailableException('Qdrant is not reachable');
+    }
 
     if (!response.ok) {
       const text = await response.text();
       this.logger.error(
         `Qdrant count failed: ${response.status} ${text.slice(0, 200)}`,
       );
-      throw new InternalServerErrorException(
+      throw new ServiceUnavailableException(
         `Qdrant count failed: ${response.status}`,
       );
     }
