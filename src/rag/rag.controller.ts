@@ -9,6 +9,7 @@ import {
 import { ReindexDto } from './dto/reindex.dto';
 import { SearchRagDto } from './dto/search-rag.dto';
 import { RagService } from './services/rag.service';
+import { ChatRagDto } from './dto/chat-rag.dto';
 
 @Controller('ai/rag')
 export class RagController {
@@ -29,5 +30,11 @@ export class RagController {
   @HttpCode(HttpStatus.OK)
   async search(@Body() dto: SearchRagDto) {
     return this.ragService.search(dto);
+  }
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async chat(@Body() dto: ChatRagDto) {
+    return this.ragService.chat(dto);
   }
 }

@@ -8,6 +8,11 @@ import {
   QdrantPoint,
   QdrantFilterCondition,
 } from '../interfaces/qdrant.interfaces';
+import { randomUUID } from 'node:crypto';
+import { GeminiService } from '../../ai/gemini.service';
+import { ConversationMessage } from '../../ai/conversation.service';
+import { RagConversationService } from './rag-conversation.service';
+import { buildRagPrompt } from '../prompts/rag.prompt';
 
 const RAG_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
@@ -48,6 +53,23 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
+export interface ChatOptions {
+  question: string;
+  conversationId?: string;
+}
+
+export interface ChatSource {
+  articleId: string;
+  articleTitle: string;
+  relevantChunk: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  sources: ChatSource[];
+  conversationId: string;
+}
+
 @Injectable()
 export class RagService {
   private readonly logger = new Logger(RagService.name);
@@ -57,6 +79,8 @@ export class RagService {
     private readonly chunker: ChunkerService,
     private readonly embeddings: GeminiEmbeddingsService,
     private readonly qdrant: QdrantService,
+    private readonly gemini: GeminiService,
+    private readonly conversations: RagConversationService,
   ) {}
 
   async indexArticle(articleId: string): Promise<IndexArticleResult> {
@@ -189,6 +213,57 @@ export class RagService {
         chunk: point.payload.text,
         similarity: point.score,
       })),
+    };
+  }
+
+  async chat(options: ChatOptions): Promise<ChatResponse> {
+    const conversationId = options.conversationId ?? randomUUID();
+
+    const queryVector = await this.embeddings.embed(
+      options.question,
+      'RETRIEVAL_QUERY',
+    );
+
+    const points = await this.qdrant.search(queryVector, 5, undefined);
+
+    const sources: ChatSource[] = points.map((p) => ({
+      articleId: p.payload.articleId,
+      articleTitle: p.payload.title,
+      relevantChunk: p.payload.text,
+    }));
+
+    const contextChunks = points.map((p) => ({
+      title: p.payload.title,
+      text: p.payload.text,
+    }));
+
+    const promptText = buildRagPrompt({
+      question: options.question,
+      contextChunks,
+    });
+
+    const history = this.conversations.getHistory(conversationId);
+    const messages: ConversationMessage[] = [
+      ...history,
+      { role: 'user', text: promptText },
+    ];
+
+    const result = await this.gemini.generateWithHistory(messages);
+
+    this.conversations.appendMessages(
+      conversationId,
+      { role: 'user', text: options.question },
+      { role: 'model', text: result.text },
+    );
+
+    this.logger.log(
+      `Chat in conversation ${conversationId}: ${sources.length} sources used`,
+    );
+
+    return {
+      answer: result.text,
+      sources,
+      conversationId,
     };
   }
 }
