@@ -9,6 +9,7 @@ import {
   QdrantCollectionInfo,
   QdrantCreateCollectionRequest,
   QdrantOperationResponse,
+  QdrantPoint,
 } from '../interfaces/qdrant.interfaces';
 
 @Injectable()
@@ -117,5 +118,56 @@ export class QdrantService implements OnModuleInit {
         'Qdrant create collection returned result=false',
       );
     }
+  }
+
+  async upsertPoints(points: QdrantPoint[]): Promise<void> {
+    if (points.length === 0) {
+      return;
+    }
+
+    const url = `${this.baseUrl}/collections/${this.collectionName}/points?wait=true`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.error(
+        `Qdrant upsert failed: ${response.status} ${text.slice(0, 200)}`,
+      );
+      throw new InternalServerErrorException(
+        `Qdrant upsert failed: ${response.status}`,
+      );
+    }
+  }
+
+  async deletePointsByArticleId(articleId: string): Promise<number> {
+    const url = `${this.baseUrl}/collections/${this.collectionName}/points/delete?wait=true`;
+    const body = {
+      filter: {
+        must: [{ key: 'articleId', match: { value: articleId } }],
+      },
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      this.logger.error(
+        `Qdrant delete failed: ${response.status} ${text.slice(0, 200)}`,
+      );
+      throw new InternalServerErrorException(
+        `Qdrant delete failed: ${response.status}`,
+      );
+    }
+
+    const data = (await response.json()) as QdrantOperationResponse;
+    return data.result ? 1 : 0;
   }
 }

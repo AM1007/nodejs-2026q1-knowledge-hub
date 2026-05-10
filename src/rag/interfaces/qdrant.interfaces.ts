@@ -29,3 +29,20 @@ export interface QdrantOperationResponse {
   status: string;
   time: number;
 }
+
+export interface QdrantPointPayload {
+  articleId: string;
+  chunkIndex: number;
+  text: string;
+  status: string;
+  authorId: string | null;
+  categoryId: string | null;
+  updatedAt: string;
+  title: string;
+}
+
+export interface QdrantPoint {
+  id: string;
+  vector: number[];
+  payload: QdrantPointPayload;
+}
